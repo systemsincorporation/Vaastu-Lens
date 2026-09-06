@@ -59,6 +59,21 @@ Verified in a real browser before packaging this:
 - The compass itself (Dial tab) needs your phone's real orientation
   sensor either way — it won't show a reading in a desktop browser.
 
+## Two features fetch a library from the internet at the moment you use them
+
+The **3D view** (Design tab) and **AI room detection** (Lens tab) each
+load an external library — Three.js and TensorFlow.js — from a CDN
+right when you open them, not from a file in this folder. That's
+normal (same as a site loading a font from Google), and it doesn't
+need adding to this folder or to your repo. It does mean those two
+specific features need the visiting phone to have an internet
+connection *at that moment*, separately from the page just being
+hosted. If there's no connection when you open them, they show a
+plain fallback message instead of failing silently — everything
+else (camera passthrough, compass, Brahmasthan, Matrix, NL Rules)
+runs entirely on-device with no external calls at all once the page
+itself has loaded.
+
 ## Updating it later
 
 **Option A:** replace `index.html` on your phone with a newer version

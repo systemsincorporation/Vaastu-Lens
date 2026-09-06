@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.svg">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
   :root {
     --accent: #2f7fd1;
@@ -393,10 +393,11 @@
           Walk to each corner, sight it through the camera, and tap
           Capture — this uses your phone's GPS at each tap, not full 3D
           room scanning (that needs dedicated depth hardware no plain
-          web page can access). Works best outdoors; typical consumer
-          GPS accuracy is ±3-5m or more, so treat this as a fast
-          estimate, not a survey-grade measurement — precise manual
-          entry will beat it for small plots.
+          web page can access). <strong>This needs an outdoor GPS fix to
+          work</strong> — indoors it will very often time out or fail
+          entirely, since GPS needs a clear view of the sky. For an
+          indoor plot or room, use Rectangle or Custom entry above
+          instead — they're exact and don't depend on GPS at all.
         </p>
         <div id="autoCameraWrap">
           <video id="autoVideo" autoplay playsinline muted></video>
@@ -426,10 +427,19 @@
     <!-- MATRIX SCREEN -->
     <section id="matrixScreen" class="screen">
       <div class="card">
-        <h2>Vastu matrix checker</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h2 style="margin:0;">Vastu matrix checker</h2>
+          <button id="matrixCameraToggleBtn" class="lens-chip" style="box-shadow:none; padding:5px 10px; font-size:11px;">Show camera</button>
+        </div>
         <p>Stand where the element is (or will be) and pick what you're
-        checking. Reading is taken from the Dial tab's current heading.</p>
+        checking. Reading is taken from the Dial tab's current heading.
+        Turn on the camera above to see what you're pointing at while
+        you check.</p>
         <p class="small" id="matrixHeadingLine">—</p>
+      </div>
+      <div class="card" id="matrixCameraCard" style="display:none; padding:0; overflow:hidden;">
+        <video id="matrixVideo" autoplay playsinline muted style="width:100%; display:block; border-radius:14px; max-height:260px; object-fit:cover; background:#050505;"></video>
+        <p class="small" id="matrixCameraStatus" style="padding:8px 12px;"></p>
       </div>
       <div id="matrixButtons"></div>
       <div id="matrixResult"></div>
@@ -725,6 +735,32 @@ function boundaryRisk(heading, count){
   return distanceToNearestBoundary(heading, count) <= boundaryMarginDegrees(count);
 }
 
+const BOUNDARY_CARD_CONFIRM_FRAMES = 5;
+let boundaryRiskInstantStreak = 0;
+let lastBoundaryRiskInstant = null;
+let boundaryCardVisible = false;
+
+// The underlying `risk` boolean (used for dial/lens edge-highlighting)
+// can legitimately flip near a genuine sector edge as a smoothed
+// heading drifts a fraction of a degree either side of the margin.
+// Toggling the boundary WARNING CARD on every one of those flips
+// shoves the dial and everything below it up/down each time — a
+// layout-jump that reads as flicker even though each individual
+// warning was technically correct. This debounces only the card's
+// visibility, the same hysteresis pattern used for sensor stability.
+function updateBoundaryCardVisibility(riskNow){
+  if (riskNow === lastBoundaryRiskInstant) {
+    boundaryRiskInstantStreak++;
+  } else {
+    lastBoundaryRiskInstant = riskNow;
+    boundaryRiskInstantStreak = 1;
+  }
+  if (boundaryRiskInstantStreak >= BOUNDARY_CARD_CONFIRM_FRAMES) {
+    boundaryCardVisible = riskNow;
+  }
+  return boundaryCardVisible;
+}
+
 /* ==================================================================
    Camera stream manager — a single shared getUserMedia stream reused
    across the Lens tab and the Brahmasthan Camera+GPS mode, started
@@ -771,9 +807,13 @@ function activeShapeName(){
   return btn ? btn.dataset.shape : "rect";
 }
 
+let matrixCameraOn = false;
+
 function syncCamera(){
   const tab = activeTabName();
-  const needsCamera = tab === "lens" || (tab === "brahmasthan" && activeShapeName() === "auto");
+  const needsCamera = tab === "lens" ||
+    (tab === "brahmasthan" && activeShapeName() === "auto") ||
+    (tab === "matrix" && matrixCameraOn);
 
   if (!needsCamera) {
     stopSharedStream();
@@ -788,6 +828,13 @@ function syncCamera(){
     }, () => {
       document.getElementById("lensPermCard").style.display = "flex";
     });
+  } else if (tab === "matrix") {
+    attachCamera(document.getElementById("matrixVideo"), () => {
+      document.getElementById("matrixCameraStatus").textContent = "";
+    }, () => {
+      document.getElementById("matrixCameraStatus").textContent =
+        "Camera access denied or unavailable — checks below still work without it.";
+    });
   } else {
     attachCamera(document.getElementById("autoVideo"), () => {}, () => {
       document.getElementById("autoStatus").textContent =
@@ -795,6 +842,13 @@ function syncCamera(){
     });
   }
 }
+
+document.getElementById("matrixCameraToggleBtn").addEventListener("click", () => {
+  matrixCameraOn = !matrixCameraOn;
+  document.getElementById("matrixCameraToggleBtn").textContent = matrixCameraOn ? "Hide camera" : "Show camera";
+  document.getElementById("matrixCameraCard").style.display = matrixCameraOn ? "block" : "none";
+  syncCamera();
+});
 
 /* ---------- Tabs ---------- */
 document.querySelectorAll("header nav button").forEach(btn => {
@@ -1021,7 +1075,7 @@ function render(){
 
   updateDirectionInsight(heading);
 
-  if (risk) {
+  if (updateBoundaryCardVisibility(risk)) {
     const adjIdx = adjacentIndexTowardBoundary(heading, state.sectorCount);
     document.getElementById("boundaryCard").style.display = "block";
     document.getElementById("boundaryText").textContent =
@@ -1317,6 +1371,47 @@ document.getElementById("calcBrahmasthanBtn").addEventListener("click", () => {
 /* ---------- Brahmasthan: Camera+GPS auto capture ---------- */
 let autoCorners = [];
 
+// Pure, testable: turns a GeolocationPositionError into an actionable
+// message instead of the browser's often-cryptic raw error.message.
+// code 1=PERMISSION_DENIED, 2=POSITION_UNAVAILABLE, 3=TIMEOUT (per the
+// Geolocation API spec — stable across browsers, unlike message text).
+function interpretGeolocationError(err){
+  if (err.code === 1) {
+    return "Location permission denied. Enable location access for this site in your browser settings, then try again.";
+  }
+  if (err.code === 3) {
+    return "Location request timed out — this is the most common outcome " +
+      "indoors, since GPS often can't get a fix through walls/roofs. " +
+      "Step outside, or switch to Rectangle/Custom entry for indoor plots.";
+  }
+  if (err.code === 2) {
+    return "Location unavailable right now. This is common indoors " +
+      "(GPS needs sky visibility) — step outside, or switch to " +
+      "Rectangle/Custom entry for indoor plots.";
+  }
+  return "Could not get location: " + err.message;
+}
+
+// Pure, testable: flags when a successful GPS fix is still too
+// imprecise to trust for a small residential plot — the same
+// underlying limitation the app's docs already disclose (typical
+// consumer GPS is +/-3-5m outdoors, and often much worse indoors),
+// surfaced right when it actually happens instead of only in the docs.
+function describeAccuracy(accuracyMeters){
+  if (accuracyMeters == null || isNaN(accuracyMeters)) return null;
+  if (accuracyMeters > 15) {
+    return "Captured, but GPS accuracy here is only ~" + Math.round(accuracyMeters) +
+      "m — too imprecise to trust for most plots (this usually means " +
+      "you're indoors or under cover). Consider Rectangle/Custom entry " +
+      "instead for a reliable result.";
+  }
+  if (accuracyMeters > 8) {
+    return "Captured (accuracy ~" + Math.round(accuracyMeters) + "m — " +
+      "treat the result as an estimate, not precise).";
+  }
+  return null;
+}
+
 function updateAutoStatus(msg){
   document.getElementById("autoStatus").textContent =
     msg || (autoCorners.length + " corner" + (autoCorners.length===1?"":"s") + " captured. Need at least 3.");
@@ -1327,16 +1422,18 @@ document.getElementById("autoCaptureBtn").addEventListener("click", () => {
     updateAutoStatus("Geolocation isn't available in this browser.");
     return;
   }
-  updateAutoStatus("Getting location…");
+  updateAutoStatus("Getting location… (can take a few seconds, longer or may fail indoors)");
   navigator.geolocation.getCurrentPosition(pos => {
     autoCorners.push({
       lat: pos.coords.latitude,
       lon: pos.coords.longitude,
       accuracy: pos.coords.accuracy
     });
-    updateAutoStatus();
+    const accuracyNote = describeAccuracy(pos.coords.accuracy);
+    updateAutoStatus(accuracyNote ||
+      (autoCorners.length + " corner" + (autoCorners.length===1?"":"s") + " captured. Need at least 3."));
   }, err => {
-    updateAutoStatus("Could not get location: " + err.message);
+    updateAutoStatus(interpretGeolocationError(err));
   }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
 });
 
@@ -1352,7 +1449,10 @@ document.getElementById("autoFinishBtn").addEventListener("click", () => {
   resEl.style.display = "none";
 
   if (autoCorners.length < 3) {
-    errEl.textContent = "Capture at least 3 corners first.";
+    errEl.textContent = "Capture at least 3 corners first. If Capture " +
+      "keeps timing out or failing, you're most likely indoors — GPS " +
+      "needs sky visibility. Switch to Rectangle or Custom entry above " +
+      "for indoor plots instead.";
     errEl.style.display = "block";
     return;
   }
