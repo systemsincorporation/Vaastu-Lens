@@ -1,0 +1,2229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#f4f6fb">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>VastuLens</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.svg">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/128/three.min.js"></script>
+<style>
+  :root {
+    --accent: #2f7fd1;
+    --accent2: #8b5cf6;
+    --text: #1a1a2e;
+    --text-dim: rgba(26,26,46,0.68);
+    --glass: rgba(255,255,255,0.72);
+    --glass-strong: rgba(255,255,255,0.88);
+    --glass-border: rgba(26,26,46,0.10);
+    --warn-bg: rgba(220,60,60,0.14);
+    --warn-border: rgba(200,40,40,0.35);
+    --tertiary-bg: rgba(220,150,30,0.16);
+    --tertiary-border: rgba(190,120,20,0.4);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    color: var(--text);
+    font-family: -apple-system, "SF Pro Display", Roboto, "Segoe UI", sans-serif;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 15% -10%, rgba(47,127,209,0.14) 0%, transparent 45%),
+      radial-gradient(circle at 100% 10%, rgba(139,92,246,0.12) 0%, transparent 50%),
+      radial-gradient(circle at 50% 120%, rgba(47,127,209,0.10) 0%, transparent 55%),
+      linear-gradient(160deg, #ffffff 0%, #f4f6fb 55%, #eef1f8 100%);
+    background-attachment: fixed;
+  }
+  #app { height: 100%; display: flex; flex-direction: column; }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; padding-top: max(10px, env(safe-area-inset-top));
+    background: rgba(255,255,255,0.65); backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border-bottom: 1px solid var(--glass-border);
+    z-index: 20;
+  }
+  header h1 {
+    font-size: 17px; margin: 0; font-weight: 700; letter-spacing: 0.2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  nav {
+    display: flex; gap: 4px; background: var(--glass); padding: 3px; border-radius: 12px; border: 1px solid var(--glass-border);
+    overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 62vw;
+  }
+  nav::-webkit-scrollbar { display: none; }
+  nav button {
+    background: transparent; border: none; color: var(--text-dim);
+    padding: 6px 10px; border-radius: 9px; font-size: 12px; font-weight: 600;
+    transition: background 180ms ease, color 180ms ease, box-shadow 180ms ease;
+    flex-shrink: 0; white-space: nowrap;
+  }
+  nav button.active {
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    color: #06070d; box-shadow: 0 2px 10px rgba(125,196,255,0.35);
+  }
+  main { flex: 1; position: relative; overflow: hidden; }
+  .screen { position: absolute; inset: 0; overflow-y: auto; padding: 14px; padding-bottom: 40px; display: none; -webkit-overflow-scrolling: touch; }
+  .screen.active { display: block; }
+  .card {
+    background: var(--glass); border: 1px solid var(--glass-border);
+    border-radius: 16px; padding: 14px; margin-bottom: 12px;
+    backdrop-filter: blur(16px) saturate(150%); -webkit-backdrop-filter: blur(16px) saturate(150%);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.28);
+  }
+  .card h2 { margin: 0 0 6px; font-size: 15px; font-weight: 700; }
+  .card p, .card div.small { font-size: 12.5px; color: var(--text-dim); line-height: 1.45; }
+  .warn { background: var(--warn-bg); border-color: var(--warn-border); }
+  .tertiary { background: var(--tertiary-bg); border-color: var(--tertiary-border); }
+  .heading-num {
+    font-size: 46px; font-weight: 800; text-align: center; margin: 4px 0;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 0 30px rgba(125,196,255,0.25);
+  }
+  .sector-name { text-align: center; font-size: 17px; font-weight: 700; }
+  .sector-vedic { text-align: center; font-size: 13px; color: var(--text-dim); margin-bottom: 4px; }
+  .center-text { text-align: center; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  input[type=text], input[type=number] {
+    width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border);
+    color: var(--text); padding: 9px; border-radius: 10px; font-size: 14px; margin-bottom: 6px;
+  }
+  button.primary {
+    width: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); color: #06070d; border: none;
+    padding: 13px; border-radius: 12px; font-weight: 700; font-size: 14px; margin-top: 4px;
+    box-shadow: 0 6px 20px rgba(125,196,255,0.25);
+  }
+  button.ghost {
+    background: var(--glass); border: 1px solid var(--glass-border); color: var(--text);
+    padding: 10px; border-radius: 10px; font-size: 13px; width: 100%; font-weight: 600;
+  }
+  .segrow { display: flex; background: var(--glass); border-radius: 12px; padding: 3px; margin-bottom: 10px; border: 1px solid var(--glass-border); }
+  .segrow button {
+    flex: 1; background: transparent; border: none; color: var(--text-dim); padding: 8px 4px; border-radius: 9px; font-size: 12.5px; font-weight: 600;
+    transition: background 180ms ease, color 180ms ease;
+  }
+  .segrow button.active {
+    background: linear-gradient(90deg, var(--accent), var(--accent2)); color: #06070d;
+    box-shadow: 0 2px 10px rgba(125,196,255,0.3);
+  }
+
+  /* Dial — transparent, floating directly on the app background, no opaque card behind it */
+  #dial-wrap { position: relative; display: flex; justify-content: center; align-items: center; margin: 14px 0 8px; height: 300px; }
+  #dialGlow {
+    position: absolute; width: 260px; height: 260px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(125,196,255,0.20) 0%, rgba(179,136,255,0.08) 55%, transparent 75%);
+    filter: blur(6px); pointer-events: none;
+  }
+  #dialCanvas { position: relative; touch-action: none; }
+
+  /* Status stack: overlapping grid cell so swapping which card is
+     visible crossfades via opacity instead of a display:none layout
+     change — this is what actually kills the flicker, since nothing
+     ever gets inserted/removed from layout on every sensor reading. */
+  #statusStack { display: grid; }
+  #statusStack > * { grid-area: 1 / 1; transition: opacity 240ms ease; }
+  .stack-hidden { opacity: 0; pointer-events: none; }
+
+  .vertex-row { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
+  .vertex-row input { margin-bottom: 0; }
+  .vertex-row button { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 8px; padding: 8px 10px; }
+
+  /* Lens view */
+  #lensScreen { padding: 0; }
+  #lensVideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #050505; }
+  #lensScrim { position: absolute; inset: 0; background: rgba(0,0,0,0.12); }
+  #lensCanvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #lensLabels {
+    position: absolute; left: 0; right: 0; top: 50%; transform: translateY(28px);
+    display: flex; justify-content: center; gap: 22px; pointer-events: none;
+  }
+  #lensLabels span { color: #fff; font-size: 13px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+  #lensLabels span.current { color: #ffe066; }
+  #lensInfo {
+    position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: rgba(10,8,16,0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px; padding: 10px 16px; text-align: center; max-width: 88%;
+  }
+  #lensInfo .heading { font-size: 17px; font-weight: 700; }
+  #lensInfo .vedic { font-size: 12.5px; color: var(--text-dim); margin-top: 1px; }
+  #lensInfo .note { font-size: 10.5px; color: var(--text-dim); margin-top: 4px; }
+  #lensPermCard { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; }
+
+  #lensTopBar {
+    position: absolute; top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px;
+    display: flex; gap: 8px; z-index: 6;
+  }
+  .lens-chip {
+    background: rgba(255,255,255,0.88); backdrop-filter: blur(8px); border: 1px solid rgba(26,26,46,0.12);
+    color: var(--text); padding: 8px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+  }
+  .lens-chip-accent { background: var(--accent); color: #fff; }
+  #tagPanel {
+    position: absolute; top: 56px; left: 10px; right: 10px; z-index: 6;
+    background: rgba(255,255,255,0.92); backdrop-filter: blur(10px); border-radius: 14px;
+    padding: 10px; box-shadow: 0 4px 18px rgba(0,0,0,0.18);
+  }
+  #manualRoomSelect {
+    width: 100%; background: rgba(26,26,46,0.05); border: 1px solid var(--glass-border); color: var(--text);
+    padding: 9px; border-radius: 10px; font-size: 13px; margin-bottom: 6px;
+  }
+  #taggedRoomsList { max-height: 140px; overflow-y: auto; margin-top: 8px; }
+  .tag-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; padding: 5px 0; border-bottom: 1px solid var(--glass-border); }
+  .tag-row button { background: none; border: none; color: #c0392b; font-size: 13px; padding: 2px 6px; }
+  #detectionBanner {
+    position: absolute; left: 10px; right: 10px; bottom: 108px; z-index: 6;
+    background: rgba(255,255,255,0.92); backdrop-filter: blur(10px); border-radius: 14px;
+    padding: 10px 12px; font-size: 12.5px; box-shadow: 0 4px 18px rgba(0,0,0,0.18);
+  }
+  footer.disclaimer { font-size: 10.5px; color: var(--text-dim); text-align: center; padding: 8px 20px 4px; }
+
+  #autoCameraWrap { position: relative; border-radius: 14px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 10px; border: 1px solid var(--glass-border); }
+  #autoVideo { width: 100%; height: 100%; object-fit: cover; background: #050505; display: block; }
+  #autoReticle { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  #autoReticle div { width: 46px; height: 46px; border: 2px solid var(--accent); border-radius: 50%; box-shadow: 0 0 16px rgba(125,196,255,0.5); }
+
+  /* Design screen: room table + 2D plan + 3D viewport */
+  .room-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+  .room-row input[type=number] { width: 62px; margin-bottom: 0; }
+  .room-row select {
+    background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text);
+    padding: 8px 4px; border-radius: 8px; font-size: 12px; flex: 1; min-width: 90px;
+  }
+  .room-row button { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 8px; padding: 8px 10px; }
+  #planCanvas { width: 100%; border-radius: 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); touch-action: none; }
+  #viewToggle { display: flex; gap: 6px; margin-bottom: 8px; }
+  #view3d { width: 100%; height: 280px; border-radius: 14px; overflow: hidden; border: 1px solid var(--glass-border); background: #050308; }
+  #view3d canvas { width: 100% !important; height: 100% !important; display: block; touch-action: none; }
+  .room-compliance-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--glass-border); font-size: 12.5px; }
+  .room-compliance-row:last-child { border-bottom: none; }
+  .badge { padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 700; }
+  .badge-ideal { background: rgba(125,196,255,0.25); color: #cfe9ff; }
+  .badge-remedy { background: rgba(255,205,100,0.25); color: #ffe4a8; }
+  .badge-forbidden { background: rgba(255,110,110,0.25); color: #ffc2c2; }
+
+  /* NL Rules screen */
+  select.full {
+    width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text);
+    padding: 10px; border-radius: 10px; font-size: 14px; margin-bottom: 8px;
+  }
+  .verdict-ok { background: rgba(125,220,160,0.18); border-color: rgba(125,220,160,0.4); }
+  .verdict-maybe { background: var(--tertiary-bg); border-color: var(--tertiary-border); }
+  .verdict-no { background: var(--warn-bg); border-color: var(--warn-border); }
+  a.official-link {
+    display: block; text-align: center; background: var(--glass); border: 1px solid var(--glass-border);
+    color: var(--accent); padding: 10px; border-radius: 10px; font-size: 13px; font-weight: 600; margin-top: 6px;
+    text-decoration: none;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>VastuLens</h1>
+    <nav>
+      <button data-tab="dial" class="active">Dial</button>
+      <button data-tab="lens">Lens</button>
+      <button data-tab="brahmasthan">Center</button>
+      <button data-tab="matrix">Matrix</button>
+      <button data-tab="design">Design</button>
+      <button data-tab="nlrules">NL Rules</button>
+    </nav>
+  </header>
+  <main>
+
+    <!-- DIAL SCREEN -->
+    <section id="dialScreen" class="screen active">
+      <div id="permCard" class="card warn" style="display:none;">
+        <h2>Sensor access needed</h2>
+        <p id="permText">Tap below to enable compass sensors.</p>
+        <button class="primary" id="permBtn">Enable compass</button>
+      </div>
+
+      <div id="statusStack">
+        <div id="unstableCard" class="card warn stack-hidden">
+          <h2>Reading not stable yet</h2>
+          <p>Move away from metal/electronics and wave the phone in a
+          slow figure-eight to calibrate. This is paused rather than
+          showing an unreliable direction.</p>
+        </div>
+
+        <div id="headingCard" class="card stack-hidden">
+          <div class="heading-num" id="headingNum">0°</div>
+          <div class="sector-name" id="sectorName">N</div>
+          <div class="sector-vedic" id="sectorVedic">Uttar</div>
+          <div class="center-text small" id="refLine">Reference: true north</div>
+          <div class="center-text small" id="fallbackLine" style="display:none; color:#ff8a8a;">
+            True north unavailable — showing magnetic north until a location fix arrives.
+          </div>
+          <div class="center-text small" id="qualityLine" style="margin-top:6px;">
+            Stability: good · ±5° (reading-stability heuristic, not a hardware sensor report)
+          </div>
+        </div>
+      </div>
+
+      <div id="boundaryCard" class="card tertiary" style="display:none;">
+        <h2>Boundary uncertainty</h2>
+        <p id="boundaryText"></p>
+      </div>
+
+      <div id="dial-wrap"><div id="dialGlow"></div><canvas id="dialCanvas" width="280" height="280"></canvas></div>
+
+      <div class="card" id="directionInsightCard" style="display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h2 style="margin:0;">Direction insight</h2>
+          <button id="insightToggleBtn" class="lens-chip" style="box-shadow:none; padding:5px 10px; font-size:11px;">On</button>
+        </div>
+        <div id="directionInsightBody"></div>
+        <p class="small" style="margin-top:6px;">Deity/planet associations follow the Vastu Purusha Mandala as
+        commonly cited across popular Vastu-astrology literature — not
+        verse-cited to one text, and some lineages attribute the
+        southwest differently. Cultural framework, not a predictive claim.</p>
+      </div>
+
+      <div class="card">
+        <div class="small" style="margin-bottom:4px;">North reference</div>
+        <div class="segrow" id="refSeg">
+          <button data-ref="magnetic">Magnetic</button>
+          <button data-ref="true" class="active">True</button>
+        </div>
+        <div class="small" style="margin-bottom:4px;">Sectors</div>
+        <div class="segrow" id="sectorSeg">
+          <button data-count="8">8</button>
+          <button data-count="16">16</button>
+          <button data-count="32" class="active">32</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Diagnostics</h2>
+        <p id="diagText">Waiting for sensor data…</p>
+      </div>
+
+      <footer class="disclaimer">
+        A phone compass is not an exact or unquestionable indoor bearing.
+        Steel, rebar, wiring, and appliances can shift the reading.
+        Traditional remedies are cultural practice, not guaranteed outcomes.
+      </footer>
+    </section>
+
+    <!-- LENS SCREEN -->
+    <section id="lensScreen" class="screen">
+      <video id="lensVideo" autoplay playsinline muted></video>
+      <div id="lensScrim"></div>
+      <canvas id="lensCanvas"></canvas>
+      <div id="lensLabels"></div>
+
+      <div id="lensTopBar">
+        <button id="aiToggleBtn" class="lens-chip">AI room detect: Off</button>
+        <button id="tagPanelToggleBtn" class="lens-chip">Tag this spot</button>
+      </div>
+
+      <div id="tagPanel" style="display:none;">
+        <select id="manualRoomSelect"></select>
+        <button id="tagRoomBtn" class="lens-chip lens-chip-accent">Save tag</button>
+        <div id="taggedRoomsList"></div>
+      </div>
+
+      <div id="detectionBanner" style="display:none;"></div>
+
+      <div id="lensInfo">
+        <div class="heading" id="lensHeadingText">0° · N</div>
+        <div class="vedic" id="lensVedicText">Uttar</div>
+        <div class="note">Heading-based overlay (device azimuth) — not full AR world tracking</div>
+      </div>
+      <div id="lensPermCard" class="card warn">
+        <div>
+          <h2>Camera access needed</h2>
+          <p>The lens view needs your camera to show a live overlay. Note:
+          camera access only works when this page is loaded over HTTPS
+          (or localhost) — not when opened directly as a downloaded file.</p>
+          <button class="primary" id="lensPermBtn">Enable camera</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- BRAHMASTHAN SCREEN -->
+    <section id="brahmasthanScreen" class="screen">
+      <div class="card">
+        <h2>Brahmasthan (plot center)</h2>
+        <p>Pick how you want to describe your plot's boundary. The
+        centroid is exact math for the shape you give it — the only
+        source of error is how closely that shape matches the real plot.</p>
+      </div>
+
+      <div class="segrow" id="shapeSeg">
+        <button data-shape="rect" class="active">Rectangle</button>
+        <button data-shape="poly">Custom</button>
+        <button data-shape="auto">Camera+GPS</button>
+      </div>
+
+      <div class="card" id="rectCard">
+        <div class="row">
+          <div>
+            <div class="small">Width (m)</div>
+            <input type="number" id="rectWidth" value="10">
+          </div>
+          <div>
+            <div class="small">Depth (m)</div>
+            <input type="number" id="rectDepth" value="8">
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="polyCard" style="display:none;">
+        <div class="small" style="margin-bottom:6px;">
+          Corners, in order around the boundary. Need at least 3.
+        </div>
+        <div id="vertexList"></div>
+        <button class="ghost" id="addVertexBtn">+ Add corner</button>
+      </div>
+
+      <div class="card" id="autoCard" style="display:none;">
+        <p style="margin-bottom:8px;">
+          Walk to each corner, sight it through the camera, and tap
+          Capture — this uses your phone's GPS at each tap, not full 3D
+          room scanning (that needs dedicated depth hardware no plain
+          web page can access). Works best outdoors; typical consumer
+          GPS accuracy is ±3-5m or more, so treat this as a fast
+          estimate, not a survey-grade measurement — precise manual
+          entry will beat it for small plots.
+        </p>
+        <div id="autoCameraWrap">
+          <video id="autoVideo" autoplay playsinline muted></video>
+          <div id="autoReticle"><div></div></div>
+        </div>
+        <p class="small" id="autoStatus">0 corners captured. Need at least 3.</p>
+        <div class="row">
+          <button class="ghost" id="autoCaptureBtn">Capture corner</button>
+          <button class="ghost" id="autoUndoBtn">Undo last</button>
+        </div>
+        <button class="primary" id="autoFinishBtn" style="margin-top:8px;">Finish &amp; calculate</button>
+      </div>
+
+      <button class="primary" id="calcBrahmasthanBtn">Calculate Brahmasthan</button>
+
+      <div id="brahmaError" class="card warn" style="display:none;"></div>
+      <div id="brahmaResult" class="card" style="display:none;">
+        <h2>Brahmasthan point</h2>
+        <p id="brahmaCoords"></p>
+        <p id="brahmaArea"></p>
+        <p id="brahmaLatLon" style="display:none;"></p>
+        <a id="brahmaMapLink" href="#" target="_blank" style="display:none; font-size:12.5px; color: var(--accent);">Open in Maps</a>
+        <p id="brahmaConvexWarning" style="display:none; color:#ff8a8a;"></p>
+      </div>
+    </section>
+
+    <!-- MATRIX SCREEN -->
+    <section id="matrixScreen" class="screen">
+      <div class="card">
+        <h2>Vastu matrix checker</h2>
+        <p>Stand where the element is (or will be) and pick what you're
+        checking. Reading is taken from the Dial tab's current heading.</p>
+        <p class="small" id="matrixHeadingLine">—</p>
+      </div>
+      <div id="matrixButtons"></div>
+      <div id="matrixResult"></div>
+      <div class="card">
+        <p>Placements reflect principles commonly cited across popular
+        Vastu literature, evaluated at the 8-direction level. Not a
+        prediction of any outcome. See the project's
+        VASTU_MATRIX_SOURCES notes for what this is and isn't sourced from.</p>
+      </div>
+    </section>
+
+    <!-- DESIGN SCREEN -->
+    <section id="designScreen" class="screen">
+      <div class="card">
+        <h2>Design studio</h2>
+        <p>Lay out rooms as simple rectangles (meters, from any reference
+        corner — x pointing east, y pointing south). This builds a 2D
+        plan, a real interactive 3D massing model, and a Vastu direction
+        read on each room relative to the building's own center. This is
+        a simple box-massing model for spatial and directional review —
+        not a construction-grade BIM tool.</p>
+      </div>
+
+      <div class="card">
+        <h2>Funda reference (optional)</h2>
+        <p>Paste a funda.nl listing link to open it yourself, then type
+        in what you read off the page. Funda's own terms of use prohibit
+        automated scraping/data-mining of listings, and no browser can
+        fetch cross-site page data like that anyway — so this can't be
+        auto-filled, only referenced.</p>
+        <input type="text" id="fundaUrl" placeholder="https://www.funda.nl/detail/koop/...">
+        <button class="ghost" id="fundaOpenBtn">Open listing in new tab</button>
+        <div class="row" style="margin-top:8px;">
+          <input type="text" id="fundaAddress" placeholder="Address">
+          <input type="number" id="fundaLivingArea" placeholder="Living area m²">
+        </div>
+        <div class="row">
+          <input type="number" id="fundaPlotArea" placeholder="Plot area m²">
+          <input type="text" id="fundaYear" placeholder="Build year">
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Rooms</h2>
+        <div id="roomList"></div>
+        <button class="ghost" id="addRoomBtn">+ Add room</button>
+      </div>
+
+      <button class="primary" id="buildDesignBtn">Build plan &amp; 3D model</button>
+
+      <div id="viewToggle" style="display:none;">
+        <button class="ghost" id="show2dBtn">2D plan</button>
+        <button class="ghost" id="show3dBtn">3D model</button>
+        <button class="ghost" id="flythroughBtn">Auto-orbit</button>
+      </div>
+
+      <div class="card" id="plan2dCard" style="display:none;">
+        <canvas id="planCanvas" width="320" height="320"></canvas>
+      </div>
+
+      <div class="card" id="plan3dCard" style="display:none;">
+        <div id="view3d"></div>
+        <p class="small" style="margin-top:6px;">Drag to orbit, scroll/pinch
+        to zoom. "Auto-orbit" slowly rotates the camera by itself — screen-record
+        that yourself if you want a walkthrough clip; there's no video generation
+        happening here, it's a real, live 3D view.</p>
+      </div>
+
+      <div class="card" id="complianceCard" style="display:none;">
+        <h2>Per-room Vastu direction</h2>
+        <div id="complianceList"></div>
+      </div>
+    </section>
+
+    <!-- NL RULES SCREEN -->
+    <section id="nlrulesScreen" class="screen">
+      <div class="card">
+        <h2>Dutch renovation rules (preliminary check)</h2>
+        <p>National <em>vergunningsvrij</em> (permit-free) rules from the
+        Besluit bouwwerken leefomgeving (Bbl), current under the
+        Omgevingswet (in force since 1 Jan 2024), plus specific known
+        overlays for Amsterdam and Haarlemmermeer. This still does not
+        check your exact address's omgevingsplan, welstandsnota, monument
+        status, or (for Haarlemmermeer) exact LIB Schiphol zone — any of
+        which can add stricter requirements or override these defaults.
+        This is not legal advice. Always confirm with the official
+        Omgevingsloket check and your gemeente before starting work.</p>
+      </div>
+
+      <div class="card">
+        <div class="small" style="margin-bottom:4px;">Gemeente</div>
+        <select class="full" id="gemeenteSelect">
+          <option value="landelijk">Landelijk / other gemeente (national Bbl baseline only)</option>
+          <option value="amsterdam">Amsterdam</option>
+          <option value="haarlemmermeer">Haarlemmermeer</option>
+        </select>
+        <div class="small" style="margin-bottom:4px;">What are you planning?</div>
+        <select class="full" id="workType">
+          <option value="aanbouw">Aanbouw / uitbouw (extension)</option>
+          <option value="dakkapel">Dakkapel (dormer)</option>
+          <option value="dakopbouw">Dakopbouw (roof-mass raise) / dakloggia</option>
+          <option value="dakterras">Dakterras (roof terrace)</option>
+          <option value="bijgebouw">Vrijstaand bijgebouw / schuur</option>
+          <option value="schutting">Erfafscheiding / schutting</option>
+          <option value="zonnepanelen">Zonnepanelen (solar panels)</option>
+        </select>
+        <div id="workFields"></div>
+        <button class="primary" id="checkRulesBtn" style="margin-top:8px;">Check</button>
+      </div>
+
+      <div id="rulesResult"></div>
+
+      <div class="card">
+        <a class="official-link" href="https://www.omgevingsloket.nl/" target="_blank" rel="noopener">Run the official check on Omgevingsloket.nl →</a>
+        <p style="margin-top:8px;">If your plan doesn't fit your gemeente's
+        omgevingsplan, a BOPA (buitenplanse omgevingsplanactiviteit) may
+        still be possible — ask your gemeente's loket. For anything
+        visible from public space, also check the local welstandsnota.</p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+/* ==================================================================
+   Shared Vastu sector math
+   ================================================================== */
+const EIGHT_NAMES = ["N","NE","E","SE","S","SW","W","NW"];
+const VEDIC_EIGHT_NAMES = ["Uttar","Ishanya","Purva","Agneya","Dakshin","Nairutya","Paschim","Vayavya"];
+
+// Standard 16-point compass rose, index i centered at i*22.5 degrees.
+const NAMES_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+
+// Standard 32-point compass rose (with "by" points), index i centered
+// at i*11.25 degrees. This is standard maritime/navigation nomenclature
+// — not Vastu-specific, so it carries no sourcing ambiguity.
+const NAMES_32 = [
+  "N","NbE","NNE","NEbN","NE","NEbE","ENE","EbN",
+  "E","EbS","ESE","SEbE","SE","SEbS","SSE","SbE",
+  "S","SbW","SSW","SWbS","SW","SWbW","WSW","WbS",
+  "W","WbN","WNW","NWbW","NW","NWbN","NNW","NbW"
+];
+
+function normalize(v){ return ((v % 360) + 360) % 360; }
+
+function sectorIndex(heading, count){
+  const width = 360 / count;
+  return Math.floor(normalize(heading + width/2) / width) % count;
+}
+
+function sectorPrefixIndex(deg){
+  return Math.floor(normalize(deg + 22.5) / 45) % 8;
+}
+
+function sectorName(index, count){
+  if (count === 8) return EIGHT_NAMES[index];
+  if (count === 16) return NAMES_16[index];
+  if (count === 32) return NAMES_32[index];
+  return String(index);
+}
+
+function sectorVedicName(index, count){
+  if (count === 8) return VEDIC_EIGHT_NAMES[index];
+  const center = index * (360/count);
+  return VEDIC_EIGHT_NAMES[sectorPrefixIndex(center)] + "-" + (index+1);
+}
+
+const QUADRANT_NAMES_32 = ["N","E","S","W"];
+function blockLabel32(index){
+  const cardinalIndex = Math.floor((index + 4) / 8) % 4;
+  const blockStart = ((cardinalIndex * 8 - 4) % 32 + 32) % 32;
+  const subZone = ((index - blockStart) % 32 + 32) % 32 + 1;
+  return QUADRANT_NAMES_32[cardinalIndex] + subZone;
+}
+
+function distanceToNearestBoundary(heading, count){
+  const width = 360/count;
+  const offset = normalize(heading + width/2) % width;
+  return Math.min(offset, width - offset);
+}
+
+function adjacentIndexTowardBoundary(heading, count){
+  const width = 360/count;
+  const offset = normalize(heading + width/2) % width;
+  const current = sectorIndex(heading, count);
+  return offset < width/2 ? (current - 1 + count) % count : (current + 1) % count;
+}
+
+function shortestAngleDiff(a, b){
+  return ((a - b + 180) % 360 + 360) % 360 - 180;
+}
+
+/* ==================================================================
+   App state — raw sensor input is decoupled from rendering. Sensor
+   events just update this state (cheap); a single requestAnimationFrame
+   loop reads it and paints, capped to the display refresh rate instead
+   of firing once per raw sensor event (which can be 30-100+/sec on some
+   devices and was the root cause of the reported flicker).
+   ================================================================== */
+const state = {
+  reference: "true",
+  sectorCount: 32,
+  rawHeading: 0,
+  smoothedHeading: null,
+  trueHeadingAvailable: false,
+  declination: null,
+  recentHeadings: [],
+  instantQuality: "unavailable",
+  quality: "unavailable",       // debounced value actually used by the UI
+  qualityStreak: 0,
+  errorDeg: 180,
+};
+
+const QUALITY_CONFIRM_FRAMES = 8; // consecutive agreeing readings required before the UI state is allowed to change — this hysteresis is what stops rapid card-swap flicker when the instantaneous signal hovers near a threshold
+const HEADING_SMOOTHING_ALPHA = 0.22;
+
+function pushHeadingReading(raw){
+  state.rawHeading = normalize(raw);
+  state.recentHeadings.push(state.rawHeading);
+  if (state.recentHeadings.length > 16) state.recentHeadings.shift();
+
+  if (state.smoothedHeading === null) {
+    state.smoothedHeading = state.rawHeading;
+  } else {
+    const diff = shortestAngleDiff(state.rawHeading, state.smoothedHeading);
+    state.smoothedHeading = normalize(state.smoothedHeading + diff * HEADING_SMOOTHING_ALPHA);
+  }
+
+  updateQuality();
+}
+
+function computeInstantQuality(){
+  if (state.recentHeadings.length < 6) return "unavailable";
+  // Circular resultant length: 1 = perfectly steady, 0 = totally scattered.
+  let sx = 0, sy = 0;
+  state.recentHeadings.forEach(h => {
+    const r = h * Math.PI / 180;
+    sx += Math.cos(r); sy += Math.sin(r);
+  });
+  const R = Math.sqrt(sx*sx + sy*sy) / state.recentHeadings.length;
+  if (R > 0.995) return "good";
+  if (R > 0.965) return "caution";
+  return "unreliable";
+}
+
+function updateQuality(){
+  const instant = computeInstantQuality();
+  if (instant === state.instantQuality) {
+    state.qualityStreak++;
+  } else {
+    state.instantQuality = instant;
+    state.qualityStreak = 1;
+  }
+  if (state.qualityStreak >= QUALITY_CONFIRM_FRAMES || state.quality === "unavailable") {
+    state.quality = instant;
+  }
+  state.errorDeg = state.quality === "good" ? 5 : state.quality === "caution" ? 10 : 180;
+}
+
+function currentHeading(){
+  const base = state.smoothedHeading === null ? state.rawHeading : state.smoothedHeading;
+  if (state.reference === "true" && state.trueHeadingAvailable){
+    return normalize(base + state.declination);
+  }
+  return base;
+}
+
+function usingMagneticFallback(){
+  return state.reference === "true" && !state.trueHeadingAvailable;
+}
+
+function canAnalyze(){
+  return state.quality === "good" || state.quality === "caution";
+}
+
+function boundaryMarginDegrees(count){
+  const sectorWidth = 360 / count;
+  // The raw sensor-accuracy margin (state.errorDeg, 5-10deg) is sized
+  // for how uncertain the HEADING is, not for how wide a SECTOR is. At
+  // low sector counts (8) that margin is small relative to a 45deg
+  // sector and behaves fine. At high sector counts (32) sectors are
+  // only 11.25deg wide, so the raw margin used to exceed half the
+  // sector — meaning boundary risk was flagged on 89-100% of readings,
+  // constantly, regardless of actual heading. Capping it to a quarter
+  // of the sector width keeps the warning meaningful (still shown near
+  // genuine edges) without swallowing the whole sector at any count.
+  return Math.min(state.errorDeg, sectorWidth / 4);
+}
+
+function boundaryRisk(heading, count){
+  if (!canAnalyze()) return false;
+  return distanceToNearestBoundary(heading, count) <= boundaryMarginDegrees(count);
+}
+
+/* ==================================================================
+   Camera stream manager — a single shared getUserMedia stream reused
+   across the Lens tab and the Brahmasthan Camera+GPS mode, started
+   only while one of them is actually visible and stopped otherwise
+   (battery/privacy correctness; the original build never released the
+   camera after leaving the Lens tab).
+   ================================================================== */
+let sharedStream = null;
+
+function stopSharedStream(){
+  if (sharedStream) {
+    sharedStream.getTracks().forEach(t => t.stop());
+    sharedStream = null;
+  }
+  cameraStarted = false;
+}
+
+function attachCamera(videoEl, onSuccess, onFail){
+  if (sharedStream) {
+    videoEl.srcObject = sharedStream;
+    onSuccess && onSuccess();
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    onFail && onFail();
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+    .then(stream => {
+      sharedStream = stream;
+      videoEl.srcObject = stream;
+      onSuccess && onSuccess();
+    })
+    .catch(() => onFail && onFail());
+}
+
+function activeTabName(){
+  const btn = document.querySelector("header nav button.active");
+  return btn ? btn.dataset.tab : "dial";
+}
+
+function activeShapeName(){
+  const btn = document.querySelector("#shapeSeg button.active");
+  return btn ? btn.dataset.shape : "rect";
+}
+
+function syncCamera(){
+  const tab = activeTabName();
+  const needsCamera = tab === "lens" || (tab === "brahmasthan" && activeShapeName() === "auto");
+
+  if (!needsCamera) {
+    stopSharedStream();
+    return;
+  }
+
+  if (tab === "lens") {
+    attachCamera(lensVideo, () => {
+      cameraStarted = true;
+      document.getElementById("lensPermCard").style.display = "none";
+      resizeLensCanvas();
+    }, () => {
+      document.getElementById("lensPermCard").style.display = "flex";
+    });
+  } else {
+    attachCamera(document.getElementById("autoVideo"), () => {}, () => {
+      document.getElementById("autoStatus").textContent =
+        "Camera access denied or unavailable — you can still capture corners by GPS alone.";
+    });
+  }
+}
+
+/* ---------- Tabs ---------- */
+document.querySelectorAll("header nav button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("header nav button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+    document.getElementById(btn.dataset.tab + "Screen").classList.add("active");
+    syncCamera();
+  });
+});
+
+/* ---------- Orientation sensor wiring ---------- */
+let sensorStarted = false;
+
+function needsIosPermission(){
+  return typeof DeviceOrientationEvent !== "undefined" &&
+    typeof DeviceOrientationEvent.requestPermission === "function";
+}
+
+function startSensors(){
+  if (sensorStarted) return;
+  sensorStarted = true;
+  document.getElementById("permCard").style.display = "none";
+
+  // This handler only updates state — it never touches the DOM or
+  // canvas directly. All painting happens once per animation frame in
+  // the render loop below, regardless of how often the device fires
+  // orientation events.
+  const handler = (e) => {
+    let heading = null;
+    if (typeof e.webkitCompassHeading === "number") {
+      heading = e.webkitCompassHeading; // iOS Safari: already magnetic-north-relative
+    } else if (e.alpha !== null && (e.absolute === true || "ondeviceorientationabsolute" in window === false)) {
+      heading = normalize(360 - e.alpha); // Android: alpha increases counter-clockwise
+    }
+    if (heading === null) return;
+    pushHeadingReading(heading);
+  };
+
+  if ("ondeviceorientationabsolute" in window) {
+    window.addEventListener("deviceorientationabsolute", handler, true);
+  } else {
+    window.addEventListener("deviceorientation", handler, true);
+  }
+
+  tryFetchDeclination();
+}
+
+document.getElementById("permBtn").addEventListener("click", () => {
+  if (needsIosPermission()) {
+    DeviceOrientationEvent.requestPermission().then(res => {
+      if (res === "granted") startSensors();
+    }).catch(() => {});
+  } else {
+    startSensors();
+  }
+});
+
+window.addEventListener("load", () => {
+  if (needsIosPermission()) {
+    document.getElementById("permCard").style.display = "block";
+    document.getElementById("permText").textContent =
+      "iOS requires a tap to grant motion & orientation access.";
+  } else {
+    startSensors();
+    setTimeout(() => {
+      if (state.recentHeadings.length === 0) {
+        document.getElementById("permCard").style.display = "block";
+        document.getElementById("permText").textContent =
+          "No sensor data received yet. Some browsers require a user " +
+          "gesture, or this device/browser may not expose orientation " +
+          "sensors. Tap to retry, or open this page over HTTPS if it " +
+          "was loaded as a local file.";
+      }
+    }, 1500);
+  }
+  startRenderLoop();
+});
+
+function tryFetchDeclination(){
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition((pos) => {
+    const lat = pos.coords.latitude, lon = pos.coords.longitude;
+    const url = "https://www.ngdc.noaa.gov/geomag-web/calculators/calculateDeclination" +
+      "?lat1=" + lat + "&lon1=" + lon + "&key=zNEw7&resultFormat=json";
+    fetch(url).then(r => r.json()).then(data => {
+      const val = data && data.result && data.result[0] && data.result[0].declination;
+      if (typeof val === "number") {
+        state.declination = val;
+        state.trueHeadingAvailable = true;
+      }
+    }).catch(() => { /* stays on magnetic fallback, already disclosed in UI */ });
+  }, () => { /* location denied/unavailable — stays on magnetic fallback */ },
+  { timeout: 8000 });
+}
+
+/* ---------- Reference / sector controls ---------- */
+document.getElementById("refSeg").addEventListener("click", (e) => {
+  if (e.target.tagName !== "BUTTON") return;
+  document.querySelectorAll("#refSeg button").forEach(b => b.classList.remove("active"));
+  e.target.classList.add("active");
+  state.reference = e.target.dataset.ref;
+});
+document.getElementById("sectorSeg").addEventListener("click", (e) => {
+  if (e.target.tagName !== "BUTTON") return;
+  document.querySelectorAll("#sectorSeg button").forEach(b => b.classList.remove("active"));
+  e.target.classList.add("active");
+  state.sectorCount = parseInt(e.target.dataset.count, 10);
+});
+
+/* ---------- Dial rendering ---------- */
+const dialCanvas = document.getElementById("dialCanvas");
+const dctx = dialCanvas.getContext("2d");
+
+function drawDial(heading, count, highlightedIndex, risk){
+  const w = dialCanvas.width, h = dialCanvas.height;
+  dctx.clearRect(0,0,w,h); // transparent — no opaque fill, the app's glassy background shows through
+  const cx = w/2, cy = h/2, radius = Math.min(w,h)/2 * 0.82;
+  const sectorWidth = 360/count;
+
+  const start = (highlightedIndex*sectorWidth - sectorWidth/2 - 90) * Math.PI/180;
+  const end = start + sectorWidth * Math.PI/180;
+  dctx.beginPath();
+  dctx.moveTo(cx,cy);
+  dctx.arc(cx,cy,radius,start,end);
+  dctx.closePath();
+  const grad = dctx.createRadialGradient(cx,cy,radius*0.2,cx,cy,radius);
+  grad.addColorStop(0, "rgba(179,136,255,0.30)");
+  grad.addColorStop(1, "rgba(125,196,255,0.35)");
+  dctx.fillStyle = grad;
+  dctx.fill();
+
+  dctx.beginPath();
+  dctx.arc(cx,cy,radius,0,2*Math.PI);
+  dctx.strokeStyle = "rgba(26,26,46,0.35)";
+  dctx.lineWidth = 1.5;
+  dctx.stroke();
+
+  for (let i=0;i<count;i++){
+    const boundaryAngle = i*sectorWidth - sectorWidth/2;
+    const isEdge = risk && (i===highlightedIndex || i===(highlightedIndex+1)%count);
+    const rad = (boundaryAngle-90)*Math.PI/180;
+    const innerR = radius*0.88;
+    dctx.beginPath();
+    dctx.moveTo(cx+innerR*Math.cos(rad), cy+innerR*Math.sin(rad));
+    dctx.lineTo(cx+radius*Math.cos(rad), cy+radius*Math.sin(rad));
+    dctx.strokeStyle = isEdge ? "#e02f2f" : "rgba(26,26,46,0.35)";
+    dctx.lineWidth = isEdge ? 3 : 1;
+    dctx.stroke();
+  }
+
+  const nrad = (heading-90)*Math.PI/180;
+  dctx.beginPath();
+  dctx.moveTo(cx,cy);
+  dctx.lineTo(cx+radius*0.9*Math.cos(nrad), cy+radius*0.9*Math.sin(nrad));
+  dctx.strokeStyle = "#2f7fd1";
+  dctx.lineWidth = 5;
+  dctx.lineCap = "round";
+  dctx.shadowColor = "rgba(47,127,209,0.5)";
+  dctx.shadowBlur = 10;
+  dctx.stroke();
+  dctx.shadowBlur = 0;
+  dctx.beginPath();
+  dctx.arc(cx,cy,6,0,2*Math.PI);
+  dctx.fillStyle = "#2f7fd1";
+  dctx.fill();
+
+  dctx.fillStyle = "#1a1a2e";
+  dctx.font = "600 13px sans-serif";
+  dctx.textAlign = "center";
+  dctx.fillText("N", cx, cy-radius-8);
+  dctx.fillText("S", cx, cy+radius+16);
+  dctx.fillText("E", cx+radius+12, cy+4);
+  dctx.fillText("W", cx-radius-12, cy+4);
+}
+
+/* ==================================================================
+   Main render loop — a single requestAnimationFrame loop reads the
+   latest state and paints once per display frame. Sensor events (which
+   can fire far faster than the screen refreshes on some devices) never
+   trigger a paint directly, which is what eliminates the flicker: the
+   old version rendered synchronously inside every single sensor event.
+   ================================================================== */
+function setStack(showId, hideId){
+  const show = document.getElementById(showId), hide = document.getElementById(hideId);
+  if (show.classList.contains("stack-hidden")) show.classList.remove("stack-hidden");
+  if (!hide.classList.contains("stack-hidden")) hide.classList.add("stack-hidden");
+}
+
+function render(){
+  if (state.recentHeadings.length === 0) return;
+
+  if (!canAnalyze()) {
+    setStack("unstableCard", "headingCard");
+    document.getElementById("boundaryCard").style.display = "none";
+    document.getElementById("diagText").textContent =
+      "Stability: " + state.quality + " — recalibrate (figure-eight motion).";
+    return;
+  }
+  setStack("headingCard", "unstableCard");
+
+  const heading = currentHeading();
+  const idx = sectorIndex(heading, state.sectorCount);
+  const risk = boundaryRisk(heading, state.sectorCount);
+
+  document.getElementById("headingNum").textContent = Math.round(heading) + "°";
+  const blockLabel = state.sectorCount === 32 ? " · zone " + blockLabel32(idx) : "";
+  document.getElementById("sectorName").textContent =
+    sectorName(idx, state.sectorCount) + " (sector " + (idx+1) + " of " + state.sectorCount + ")" + blockLabel;
+  document.getElementById("sectorVedic").textContent = sectorVedicName(idx, state.sectorCount);
+  document.getElementById("refLine").textContent =
+    "Reference: " + (state.reference === "true" ? "true north" : "magnetic north");
+  document.getElementById("fallbackLine").style.display = usingMagneticFallback() ? "block" : "none";
+  document.getElementById("qualityLine").textContent =
+    "Stability: " + state.quality + " · ±" + state.errorDeg +
+    "° (reading-stability heuristic, not a hardware sensor report)";
+
+  const matrixHeadingEl = document.getElementById("matrixHeadingLine");
+  if (matrixHeadingEl) {
+    matrixHeadingEl.textContent = "Current reading: " + Math.round(heading) + "° (" +
+      sectorName(sectorIndex(heading, 8), 8) + ")";
+  }
+
+  updateDirectionInsight(heading);
+
+  if (risk) {
+    const adjIdx = adjacentIndexTowardBoundary(heading, state.sectorCount);
+    document.getElementById("boundaryCard").style.display = "block";
+    document.getElementById("boundaryText").textContent =
+      "The reading is within the estimated margin of a sector edge. It " +
+      "could actually be in " + sectorName(idx, state.sectorCount) + " or " +
+      sectorName(adjIdx, state.sectorCount) + ". Recalibrate or verify " +
+      "against a floor plan before relying on this result.";
+  } else {
+    document.getElementById("boundaryCard").style.display = "none";
+  }
+
+  document.getElementById("diagText").textContent =
+    "Raw device heading: " + Math.round(state.rawHeading) + "° · " +
+    (state.trueHeadingAvailable ? ("Declination: " + state.declination.toFixed(1) + "°") : "Declination: unavailable");
+
+  drawDial(heading, state.sectorCount, idx, risk);
+  renderLens(heading, idx, risk);
+}
+
+let insightEnabled = true;
+let lastInsightDirection = null;
+
+function updateDirectionInsight(heading){
+  const card = document.getElementById("directionInsightCard");
+  if (!insightEnabled) {
+    card.style.display = "none";
+    return;
+  }
+  const dir8 = sectorName(sectorIndex(heading, 8), 8);
+  // Only touch the DOM when the 8-direction bucket actually changes —
+  // there are only 8 possible values, so this updates far less often
+  // than every render tick and can never itself cause visible flicker.
+  if (dir8 === lastInsightDirection) {
+    card.style.display = "block";
+    return;
+  }
+  lastInsightDirection = dir8;
+
+  const summary = directionProfileSummary(dir8);
+  if (!summary) {
+    card.style.display = "none";
+    return;
+  }
+
+  card.style.display = "block";
+  document.getElementById("directionInsightBody").innerHTML =
+    '<p><strong>' + summary.direction + '</strong> — associated with ' +
+    summary.deity + ' · ' + summary.planet + '<br>Traditionally linked to: ' +
+    summary.theme + '</p>' +
+    '<p><strong>Commonly favored here:</strong> ' + summary.idealText + '</p>' +
+    '<p><strong>Commonly avoided here:</strong> ' + summary.avoidText + '</p>';
+}
+
+document.getElementById("insightToggleBtn").addEventListener("click", () => {
+  insightEnabled = !insightEnabled;
+  document.getElementById("insightToggleBtn").textContent = insightEnabled ? "On" : "Off";
+  if (!insightEnabled) {
+    document.getElementById("directionInsightCard").style.display = "none";
+  } else {
+    lastInsightDirection = null; // force a refresh on the next render
+  }
+});
+
+let rafRunning = false;
+function startRenderLoop(){
+  if (rafRunning) return;
+  rafRunning = true;
+  function loop(){
+    render();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+}
+
+/* ---------- Lens (camera overlay) ---------- */
+const lensVideo = document.getElementById("lensVideo");
+const lensCanvas = document.getElementById("lensCanvas");
+const lctx = lensCanvas.getContext("2d");
+let cameraStarted = false;
+const FOV_DEG = 65;
+
+function resizeLensCanvas(){
+  lensCanvas.width = lensCanvas.clientWidth;
+  lensCanvas.height = lensCanvas.clientHeight;
+}
+window.addEventListener("resize", resizeLensCanvas);
+document.getElementById("lensPermBtn").addEventListener("click", syncCamera);
+
+function renderLens(heading, currentIdx, risk){
+  if (!cameraStarted) return;
+  if (lensCanvas.width === 0) resizeLensCanvas();
+  const w = lensCanvas.width, h = lensCanvas.height;
+  lctx.clearRect(0,0,w,h);
+  const midY = h/2;
+  const pxPerDeg = w / FOV_DEG;
+  const count = state.sectorCount;
+  const sectorWidth = 360/count;
+  const adjIdx = risk ? adjacentIndexTowardBoundary(heading, count) : -1;
+
+  lctx.strokeStyle = "#fff";
+  lctx.lineWidth = 2;
+  lctx.beginPath();
+  lctx.moveTo(w/2, midY-16); lctx.lineTo(w/2, midY+16);
+  lctx.stroke();
+
+  const labelsEl = document.getElementById("lensLabels");
+  labelsEl.innerHTML = "";
+
+  for (let i=0;i<count;i++){
+    const center = i*sectorWidth;
+    let diff = shortestAngleDiff(center, heading);
+    const halfVisible = FOV_DEG/2 + sectorWidth;
+    if (diff < -halfVisible || diff > halfVisible) continue;
+    const x = w/2 + diff*pxPerDeg;
+    const isCurrent = i === currentIdx;
+    const isEdge = risk && (i === currentIdx || i === adjIdx);
+    lctx.strokeStyle = isEdge ? "#ff5a5a" : (isCurrent ? "#7dc4ff" : "rgba(255,255,255,0.7)");
+    lctx.lineWidth = isCurrent ? 4 : 2;
+    lctx.beginPath();
+    lctx.moveTo(x, midY-12); lctx.lineTo(x, midY+12);
+    lctx.stroke();
+  }
+
+  const prevIdx = (currentIdx-1+count)%count, nextIdx = (currentIdx+1)%count;
+  [prevIdx, currentIdx, nextIdx].forEach(i => {
+    const span = document.createElement("span");
+    span.textContent = sectorName(i, count);
+    if (i === currentIdx) span.className = "current";
+    labelsEl.appendChild(span);
+  });
+
+  document.getElementById("lensHeadingText").textContent =
+    Math.round(heading) + "° · " + sectorName(currentIdx, count);
+  document.getElementById("lensVedicText").textContent = sectorVedicName(currentIdx, count);
+}
+
+/* ---------- Brahmasthan: geometry ---------- */
+function polygonCentroid(verts){
+  let a2 = 0, cx = 0, cy = 0;
+  for (let i=0;i<verts.length;i++){
+    const [x0,y0] = verts[i];
+    const [x1,y1] = verts[(i+1)%verts.length];
+    const cross = x0*y1 - x1*y0;
+    a2 += cross;
+    cx += (x0+x1)*cross;
+    cy += (y0+y1)*cross;
+  }
+  if (Math.abs(a2) < 1e-9) return null;
+  return { x: cx/(3*a2), y: cy/(3*a2), area: Math.abs(a2/2) };
+}
+
+function isConvex(verts){
+  if (verts.length < 4) return true;
+  let sign = 0;
+  for (let i=0;i<verts.length;i++){
+    const [ax,ay] = verts[i];
+    const [bx,by] = verts[(i+1)%verts.length];
+    const [cx,cy] = verts[(i+2)%verts.length];
+    const cross = (bx-ax)*(cy-by) - (by-ay)*(cx-bx);
+    if (Math.abs(cross) < 1e-9) continue;
+    const s = cross > 0 ? 1 : -1;
+    if (sign === 0) sign = s; else if (sign !== s) return false;
+  }
+  return true;
+}
+
+// Small-area equirectangular approximation — accurate to well within
+// GPS's own error budget for anything up to a few km across.
+function equirectangularProject(points){
+  const lat0 = points[0].lat, lon0 = points[0].lon;
+  const mPerDegLat = 111320;
+  const mPerDegLon = 111320 * Math.cos(lat0 * Math.PI/180);
+  return points.map(p => [(p.lon-lon0)*mPerDegLon, (p.lat-lat0)*mPerDegLat]);
+}
+
+function unprojectPoint(lat0, lon0, x, y){
+  const mPerDegLat = 111320;
+  const mPerDegLon = 111320 * Math.cos(lat0 * Math.PI/180);
+  return { lat: lat0 + y/mPerDegLat, lon: lon0 + x/mPerDegLon };
+}
+
+/* ---------- Brahmasthan: UI wiring ---------- */
+document.getElementById("shapeSeg").addEventListener("click", (e) => {
+  if (e.target.tagName !== "BUTTON") return;
+  document.querySelectorAll("#shapeSeg button").forEach(b => b.classList.remove("active"));
+  e.target.classList.add("active");
+  const shape = e.target.dataset.shape;
+  document.getElementById("rectCard").style.display = shape === "rect" ? "block" : "none";
+  document.getElementById("polyCard").style.display = shape === "poly" ? "block" : "none";
+  document.getElementById("autoCard").style.display = shape === "auto" ? "block" : "none";
+  document.getElementById("calcBrahmasthanBtn").style.display = shape === "auto" ? "none" : "block";
+  syncCamera();
+});
+
+let vertices = [[0,0],[10,0],[10,8],[0,8]];
+
+function renderVertexList(){
+  const container = document.getElementById("vertexList");
+  container.innerHTML = "";
+  vertices.forEach((v, i) => {
+    const row = document.createElement("div");
+    row.className = "vertex-row";
+    row.innerHTML =
+      '<input type="number" value="' + v[0] + '" data-i="' + i + '" data-axis="x" placeholder="x' + (i+1) + '">' +
+      '<input type="number" value="' + v[1] + '" data-i="' + i + '" data-axis="y" placeholder="y' + (i+1) + '">' +
+      '<button data-remove="' + i + '">✕</button>';
+    container.appendChild(row);
+  });
+  container.querySelectorAll("input").forEach(inp => {
+    inp.addEventListener("input", () => {
+      const i = parseInt(inp.dataset.i, 10);
+      const axis = inp.dataset.axis === "x" ? 0 : 1;
+      vertices[i][axis] = parseFloat(inp.value) || 0;
+    });
+  });
+  container.querySelectorAll("button[data-remove]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      vertices.splice(parseInt(btn.dataset.remove, 10), 1);
+      renderVertexList();
+    });
+  });
+}
+renderVertexList();
+
+document.getElementById("addVertexBtn").addEventListener("click", () => {
+  vertices.push([0,0]);
+  renderVertexList();
+});
+
+function showBrahmaResult(result){
+  document.getElementById("brahmaError").style.display = "none";
+  document.getElementById("brahmaCoords").textContent =
+    result.x.toFixed(2) + " m, " + result.y.toFixed(2) + " m from your reference corner";
+  document.getElementById("brahmaArea").textContent =
+    "Plot area: " + result.area.toFixed(2) + " m²";
+
+  const latLonEl = document.getElementById("brahmaLatLon");
+  const mapLink = document.getElementById("brahmaMapLink");
+  if (result.latlon) {
+    latLonEl.style.display = "block";
+    latLonEl.textContent =
+      "Estimated GPS coordinate: " + result.latlon.lat.toFixed(6) + ", " + result.latlon.lon.toFixed(6) +
+      " (consumer GPS accuracy applies — treat as an estimate)";
+    mapLink.style.display = "inline-block";
+    mapLink.href = "https://www.google.com/maps?q=" + result.latlon.lat + "," + result.latlon.lon;
+  } else {
+    latLonEl.style.display = "none";
+    mapLink.style.display = "none";
+  }
+
+  const warnEl = document.getElementById("brahmaConvexWarning");
+  if (!result.convex) {
+    warnEl.style.display = "block";
+    warnEl.textContent = "This is an irregular (non-convex / L-shaped) plot. " +
+      "The geometric centroid can land outside the built footprint. Several " +
+      "Vastu traditions treat irregular plots differently from a simple " +
+      "rectangle — verify against your specific method before relying on this point.";
+  } else {
+    warnEl.style.display = "none";
+  }
+  document.getElementById("brahmaResult").style.display = "block";
+}
+
+document.getElementById("calcBrahmasthanBtn").addEventListener("click", () => {
+  const errEl = document.getElementById("brahmaError");
+  const resEl = document.getElementById("brahmaResult");
+  errEl.style.display = "none";
+  resEl.style.display = "none";
+
+  const shape = activeShapeName();
+  let result;
+  try {
+    if (shape === "rect") {
+      const width = parseFloat(document.getElementById("rectWidth").value);
+      const depth = parseFloat(document.getElementById("rectDepth").value);
+      if (!(width > 0) || !(depth > 0)) throw new Error("Width and depth must be positive numbers.");
+      result = { x: width/2, y: depth/2, area: width*depth, convex: true };
+    } else {
+      if (vertices.length < 3) throw new Error("Need at least 3 corners.");
+      const c = polygonCentroid(vertices);
+      if (!c) throw new Error("These corners don't enclose any area — check for duplicate or collinear points.");
+      result = { x: c.x, y: c.y, area: c.area, convex: isConvex(vertices) };
+    }
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = "block";
+    return;
+  }
+
+  showBrahmaResult(result);
+});
+
+/* ---------- Brahmasthan: Camera+GPS auto capture ---------- */
+let autoCorners = [];
+
+function updateAutoStatus(msg){
+  document.getElementById("autoStatus").textContent =
+    msg || (autoCorners.length + " corner" + (autoCorners.length===1?"":"s") + " captured. Need at least 3.");
+}
+
+document.getElementById("autoCaptureBtn").addEventListener("click", () => {
+  if (!navigator.geolocation) {
+    updateAutoStatus("Geolocation isn't available in this browser.");
+    return;
+  }
+  updateAutoStatus("Getting location…");
+  navigator.geolocation.getCurrentPosition(pos => {
+    autoCorners.push({
+      lat: pos.coords.latitude,
+      lon: pos.coords.longitude,
+      accuracy: pos.coords.accuracy
+    });
+    updateAutoStatus();
+  }, err => {
+    updateAutoStatus("Could not get location: " + err.message);
+  }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+});
+
+document.getElementById("autoUndoBtn").addEventListener("click", () => {
+  autoCorners.pop();
+  updateAutoStatus();
+});
+
+document.getElementById("autoFinishBtn").addEventListener("click", () => {
+  const errEl = document.getElementById("brahmaError");
+  const resEl = document.getElementById("brahmaResult");
+  errEl.style.display = "none";
+  resEl.style.display = "none";
+
+  if (autoCorners.length < 3) {
+    errEl.textContent = "Capture at least 3 corners first.";
+    errEl.style.display = "block";
+    return;
+  }
+
+  const projected = equirectangularProject(autoCorners);
+  const c = polygonCentroid(projected);
+  if (!c) {
+    errEl.textContent = "These corners don't enclose any area — try again, walking the boundary in order.";
+    errEl.style.display = "block";
+    return;
+  }
+
+  const centroidLatLon = unprojectPoint(autoCorners[0].lat, autoCorners[0].lon, c.x, c.y);
+  showBrahmaResult({
+    x: c.x, y: c.y, area: c.area,
+    convex: isConvex(projected),
+    latlon: centroidLatLon
+  });
+});
+
+/* ==================================================================
+   Vastu compliance matrix
+   ================================================================== */
+const HOME_ELEMENTS = [
+  { key: "ENTRANCE", label: "Main entrance" },
+  { key: "KITCHEN", label: "Kitchen" },
+  { key: "PRIMARY_BEDROOM", label: "Primary bedroom" },
+  { key: "TOILET", label: "Toilet / bathroom" },
+  { key: "LIVING_ROOM", label: "Living room" },
+  { key: "WATER_TANK", label: "Overhead water tank / water storage" },
+];
+
+const MATRIX_RULES = {
+  ENTRANCE: {
+    ideal: ["N","NE","E"],
+    acceptable: {
+      W: "Place a bright light and a threshold motif at the entrance; keep the entry well lit.",
+      SW: "Widely considered the most difficult entrance direction; common non-demolition mitigation is a solid, heavier door with a raised threshold, kept secondary rather than primary."
+    },
+    forbidden: ["S","SE"]
+  },
+  KITCHEN: {
+    ideal: ["SE"],
+    acceptable: {
+      NW: "Workable secondary choice in many sources; keep the cooktop positioned so the cook faces east while cooking.",
+      E: "Keep the cooktop away from the exact NE corner of the room; face east while cooking."
+    },
+    forbidden: ["NE","SW"]
+  },
+  PRIMARY_BEDROOM: {
+    ideal: ["SW"],
+    acceptable: {
+      S: "Commonly treated as acceptable; keep the bed headboard to the south or west wall.",
+      W: "Keep the bed headboard against the west wall."
+    },
+    forbidden: ["NE","SE"]
+  },
+  TOILET: {
+    ideal: ["NW","W"],
+    acceptable: {
+      S: "Keep the commode positioned so usage faces north or south, not east-west, and keep the door closed when not in use.",
+      N: "Common non-demolition mitigation is a partition or plant screen toward the adjacent NE zone, plus keeping the door closed."
+    },
+    forbidden: ["NE","SW"]
+  },
+  LIVING_ROOM: {
+    ideal: ["N","E","NE"],
+    acceptable: {
+      W: "Keep seating arranged so people tend to face north or east.",
+      S: "Keep this room open and uncluttered; place heavier furniture toward the south wall."
+    },
+    forbidden: []
+  },
+  WATER_TANK: {
+    ideal: ["NE"],
+    acceptable: {
+      N: "Acceptable secondary placement in many sources.",
+      E: "Acceptable secondary placement in many sources."
+    },
+    forbidden: ["SW","S"]
+  }
+};
+
+function evaluateMatrix(elementKey, direction8){
+  const rule = MATRIX_RULES[elementKey];
+  const label = HOME_ELEMENTS.find(e => e.key === elementKey).label;
+  if (rule.ideal.includes(direction8)) {
+    return { status: "IDEAL", explanation: direction8 + " is commonly cited as the ideal placement for the " + label.toLowerCase() + ".", remedy: null };
+  }
+  if (rule.forbidden.includes(direction8)) {
+    return { status: "FORBIDDEN", explanation: direction8 + " is commonly flagged as a placement to avoid for the " + label.toLowerCase() + ".", remedy: "No commonly-cited non-demolition remedy fully offsets this; relocating the element, where feasible, is the typical recommendation." };
+  }
+  if (rule.acceptable[direction8]) {
+    return { status: "PERMISSIBLE_WITH_REMEDY", explanation: direction8 + " is not ideal for the " + label.toLowerCase() + ", but is commonly treated as workable with mitigation.", remedy: rule.acceptable[direction8] };
+  }
+  return { status: "PERMISSIBLE_WITH_REMEDY", explanation: direction8 + " is not specifically addressed as ideal or forbidden for the " + label.toLowerCase() + "; treat as neutral.", remedy: null };
+}
+
+const matrixButtonsEl = document.getElementById("matrixButtons");
+HOME_ELEMENTS.forEach(el => {
+  const btn = document.createElement("button");
+  btn.className = "primary";
+  btn.style.marginTop = "8px";
+  btn.textContent = "Check: " + el.label;
+  btn.addEventListener("click", () => {
+    const resultEl = document.getElementById("matrixResult");
+    if (!canAnalyze()) {
+      resultEl.innerHTML = '<div class="card warn">Sensor accuracy is currently too low to trust this reading — recalibrate before checking.</div>';
+      return;
+    }
+    const heading = currentHeading();
+    const dir8 = sectorName(sectorIndex(heading, 8), 8);
+    const r = evaluateMatrix(el.key, dir8);
+    const statusLabel = { IDEAL: "Ideal", PERMISSIBLE_WITH_REMEDY: "Permissible with remedy", FORBIDDEN: "Forbidden" }[r.status];
+    const cls = r.status === "IDEAL" ? "" : (r.status === "FORBIDDEN" ? "warn" : "tertiary");
+    resultEl.innerHTML =
+      '<div class="card ' + cls + '"><h2>' + el.label + ': ' + statusLabel + '</h2>' +
+      '<p>' + r.explanation + '</p>' +
+      (r.remedy ? '<p>Remedy: ' + r.remedy + '</p>' : '') +
+      '</div>';
+  });
+  matrixButtonsEl.appendChild(btn);
+});
+
+/* ==================================================================
+   Direction ↔ Vastu-astrology profile. The deity/planet associations
+   below (Vastu Purusha Mandala directional attributions) recur across
+   popular Vastu-astrology literature — same sourcing caveat as the
+   compliance matrix above: commonly cited, not verse-cited to one
+   text, and different lineages attribute some of these differently
+   (SW in particular has no single universally-agreed planet). This is
+   cultural framework information, not a scientific or predictive claim.
+   ================================================================== */
+const DIRECTION_PROFILE = {
+  N:  { deity: "Kubera", planet: "Budh (Mercury)", theme: "wealth flow and career", idealFor: ["WATER_TANK","LIVING_ROOM"], avoidFor: ["TOILET"] },
+  NE: { deity: "Ishaan (Shiva)", planet: "Guru (Jupiter)", theme: "clarity, prayer, and study", idealFor: ["WATER_TANK","LIVING_ROOM","ENTRANCE"], avoidFor: ["TOILET","KITCHEN"] },
+  E:  { deity: "Indra", planet: "Surya (Sun)", theme: "vitality and recognition", idealFor: ["ENTRANCE","LIVING_ROOM"], avoidFor: [] },
+  SE: { deity: "Agni", planet: "Shukra (Venus)", theme: "energy, fire, and finance", idealFor: ["KITCHEN"], avoidFor: ["PRIMARY_BEDROOM"] },
+  S:  { deity: "Yama", planet: "Mangal (Mars)", theme: "strength and stability", idealFor: ["PRIMARY_BEDROOM"], avoidFor: [] },
+  SW: { deity: "Nairutya / Pitru", planet: "Rahu (contested — some lineages differ)", theme: "grounding and rest", idealFor: ["PRIMARY_BEDROOM"], avoidFor: ["KITCHEN","ENTRANCE"] },
+  W:  { deity: "Varuna", planet: "Shani (Saturn)", theme: "gains and reflection", idealFor: ["TOILET"], avoidFor: [] },
+  NW: { deity: "Vayu", planet: "Chandra (Moon)", theme: "movement and relationships", idealFor: ["TOILET"], avoidFor: [] },
+};
+
+function roomLabel(key){
+  const found = HOME_ELEMENTS.find(e => e.key === key);
+  return found ? found.label : key;
+}
+
+function directionProfileSummary(dir8){
+  const p = DIRECTION_PROFILE[dir8];
+  if (!p) return null;
+  return {
+    direction: dir8,
+    deity: p.deity,
+    planet: p.planet,
+    theme: p.theme,
+    idealText: p.idealFor.length ? p.idealFor.map(roomLabel).join(", ") : "—",
+    avoidText: p.avoidFor.length ? p.avoidFor.map(roomLabel).join(", ") : "—",
+  };
+}
+
+/* ==================================================================
+   Camera room-detection heuristic. Maps general object-detection
+   classes (from a pretrained COCO-SSD model — 80 generic everyday-
+   object categories, not a dedicated room classifier) to a best-guess
+   room type. This is a heuristic, not a certified classifier: it can
+   misfire (e.g. a microwave in a garage), which is exactly why manual
+   tagging always stays available alongside it.
+   ================================================================== */
+const ROOM_DETECTION_RULES = [
+  { room: "KITCHEN", classes: ["oven", "microwave", "refrigerator", "toaster", "sink"] },
+  { room: "TOILET", classes: ["toilet", "sink"] },
+  { room: "PRIMARY_BEDROOM", classes: ["bed"] },
+  { room: "LIVING_ROOM", classes: ["couch", "tv", "remote"] },
+];
+
+function inferRoomFromDetections(detectedClasses){
+  const set = new Set(detectedClasses);
+  const matches = ROOM_DETECTION_RULES
+    .map(rule => ({
+      room: rule.room,
+      matched: rule.classes.filter(c => set.has(c)),
+    }))
+    .filter(m => m.matched.length > 0);
+
+  if (matches.length === 0) return null;
+
+  matches.sort((a, b) => b.matched.length - a.matched.length);
+  return { room: matches[0].room, matchedClasses: matches[0].matched };
+}
+
+
+/* ==================================================================
+   Design studio — multi-room floor plan, area-weighted building
+   centroid, per-room compass direction, 2D plan, and a real 3D
+   massing model (Three.js). Pure geometry/direction math is kept
+   separate from the Three.js rendering calls so it can be unit tested
+   without a browser/WebGL context.
+   ================================================================== */
+
+// Convention: x meters = east offset, y meters = south offset, from
+// whatever reference corner the user picks (matches screen/canvas
+// y-down drawing, and is documented in the UI).
+function roomArea(room){ return room.w * room.d; }
+function roomCenter(room){ return [room.x + room.w/2, room.y + room.d/2]; }
+
+function buildingCentroid(rooms){
+  let totalArea = 0, cx = 0, cy = 0;
+  rooms.forEach(r => {
+    const a = roomArea(r);
+    const c = roomCenter(r);
+    totalArea += a;
+    cx += c[0] * a;
+    cy += c[1] * a;
+  });
+  if (totalArea <= 0) return null;
+  return { x: cx/totalArea, y: cy/totalArea, totalArea };
+}
+
+// Bearing (0=N, 90=E, 180=S, 270=W) from the building centroid to a
+// room's own center, given the x=east/y=south convention above.
+function roomBearingFromCentroid(room, centroid){
+  const c = roomCenter(room);
+  const dx = c[0] - centroid.x; // east offset
+  const dy = c[1] - centroid.y; // south offset
+  return normalize(Math.atan2(dx, -dy) * 180 / Math.PI);
+}
+
+const ROOM_TYPES = [
+  { key: "ENTRANCE", label: "Entrance" },
+  { key: "KITCHEN", label: "Kitchen" },
+  { key: "PRIMARY_BEDROOM", label: "Primary bedroom" },
+  { key: "TOILET", label: "Toilet/bathroom" },
+  { key: "LIVING_ROOM", label: "Living room" },
+  { key: "WATER_TANK", label: "Water tank" },
+  { key: "OTHER", label: "Other room (no Vastu check)" },
+];
+
+let rooms = [
+  { type: "LIVING_ROOM", x: 0, y: 0, w: 5, d: 4, h: 2.6 },
+  { type: "KITCHEN", x: 5, y: 0, w: 3, d: 4, h: 2.6 },
+  { type: "PRIMARY_BEDROOM", x: 0, y: 4, w: 4, d: 3, h: 2.6 },
+  { type: "TOILET", x: 4, y: 4, w: 2, d: 2, h: 2.6 },
+];
+
+function renderRoomList(){
+  const container = document.getElementById("roomList");
+  container.innerHTML = "";
+  rooms.forEach((r, i) => {
+    const row = document.createElement("div");
+    row.className = "room-row";
+    const opts = ROOM_TYPES.map(t =>
+      '<option value="' + t.key + '"' + (t.key === r.type ? ' selected' : '') + '>' + t.label + '</option>'
+    ).join("");
+    row.innerHTML =
+      '<select data-i="' + i + '" data-f="type">' + opts + '</select>' +
+      '<input type="number" value="' + r.x + '" data-i="' + i + '" data-f="x" placeholder="x">' +
+      '<input type="number" value="' + r.y + '" data-i="' + i + '" data-f="y" placeholder="y">' +
+      '<input type="number" value="' + r.w + '" data-i="' + i + '" data-f="w" placeholder="w">' +
+      '<input type="number" value="' + r.d + '" data-i="' + i + '" data-f="d" placeholder="d">' +
+      '<input type="number" value="' + r.h + '" data-i="' + i + '" data-f="h" placeholder="h">' +
+      '<button data-remove="' + i + '">✕</button>';
+    container.appendChild(row);
+  });
+  container.querySelectorAll("select,input").forEach(el => {
+    el.addEventListener("input", () => {
+      const i = parseInt(el.dataset.i, 10);
+      const f = el.dataset.f;
+      rooms[i][f] = (f === "type") ? el.value : (parseFloat(el.value) || 0);
+    });
+  });
+  container.querySelectorAll("button[data-remove]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      rooms.splice(parseInt(btn.dataset.remove, 10), 1);
+      renderRoomList();
+    });
+  });
+}
+renderRoomList();
+
+document.getElementById("addRoomBtn").addEventListener("click", () => {
+  rooms.push({ type: "OTHER", x: 0, y: 0, w: 3, d: 3, h: 2.6 });
+  renderRoomList();
+});
+
+document.getElementById("fundaOpenBtn").addEventListener("click", () => {
+  const url = document.getElementById("fundaUrl").value.trim();
+  if (url) window.open(url, "_blank", "noopener");
+});
+
+function drawPlan2d(roomsList, centroid){
+  const canvas = document.getElementById("planCanvas");
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+
+  const maxX = Math.max(...roomsList.map(r => r.x + r.w), 1);
+  const maxY = Math.max(...roomsList.map(r => r.y + r.d), 1);
+  const scale = Math.min((w-20)/maxX, (h-20)/maxY);
+  const ox = 10, oy = 10;
+
+  roomsList.forEach(r => {
+    const isVastu = r.type !== "OTHER";
+    ctx.fillStyle = isVastu ? "rgba(47,127,209,0.16)" : "rgba(26,26,46,0.06)";
+    ctx.strokeStyle = "rgba(26,26,46,0.35)";
+    ctx.lineWidth = 1.5;
+    const rx = ox + r.x*scale, ry = oy + r.y*scale, rw = r.w*scale, rd = r.d*scale;
+    ctx.fillRect(rx, ry, rw, rd);
+    ctx.strokeRect(rx, ry, rw, rd);
+    ctx.fillStyle = "#1a1a2e";
+    ctx.font = "11px sans-serif";
+    ctx.textAlign = "center";
+    const label = ROOM_TYPES.find(t => t.key === r.type).label;
+    ctx.fillText(label, rx+rw/2, ry+rd/2);
+  });
+
+  if (centroid) {
+    const cx = ox + centroid.x*scale, cy = oy + centroid.y*scale;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 5, 0, 2*Math.PI);
+    ctx.fillStyle = "#c98a00";
+    ctx.fill();
+    ctx.font = "10px sans-serif";
+    ctx.fillText("Brahmasthan", cx, cy-10);
+  }
+}
+
+/* ---- 3D massing model (Three.js) — thin adapter over the pure geometry above ---- */
+let three = { renderer: null, scene: null, camera: null, group: null, autoOrbit: false };
+let orbitState = { theta: Math.PI/4, phi: Math.PI/3.2, radius: 14, targetX: 0, targetZ: 0 };
+
+function initThree(){
+  const container = document.getElementById("view3d");
+  if (typeof THREE === "undefined") {
+    container.innerHTML = '<p style="padding:12px;color:var(--text-dim);font-size:12.5px;">3D library failed to load (no internet connection to the CDN). The 2D plan and compliance list still work.</p>';
+    return false;
+  }
+  if (three.renderer) return true;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(50, container.clientWidth/container.clientHeight, 0.1, 200);
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(container.clientWidth, container.clientHeight || 280);
+  container.appendChild(renderer.domElement);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+  sun.position.set(10, 20, 10);
+  scene.add(sun);
+
+  const grid = new THREE.GridHelper(40, 40, 0x445566, 0x223344);
+  scene.add(grid);
+
+  three = { renderer, scene, camera, group: null, autoOrbit: false };
+
+  let dragging = false, lastX = 0, lastY = 0;
+  renderer.domElement.addEventListener("pointerdown", e => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
+  window.addEventListener("pointerup", () => { dragging = false; });
+  window.addEventListener("pointermove", e => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    orbitState.theta -= dx * 0.008;
+    orbitState.phi = Math.max(0.15, Math.min(Math.PI/2 - 0.05, orbitState.phi - dy * 0.008));
+  });
+  renderer.domElement.addEventListener("wheel", e => {
+    e.preventDefault();
+    orbitState.radius = Math.max(3, Math.min(60, orbitState.radius + e.deltaY * 0.02));
+  }, { passive: false });
+
+  function animate(){
+    requestAnimationFrame(animate);
+    if (three.autoOrbit) orbitState.theta += 0.004;
+    updateCameraFromOrbit();
+    renderer.render(scene, camera);
+  }
+  animate();
+  return true;
+}
+
+function updateCameraFromOrbit(){
+  const { theta, phi, radius, targetX, targetZ } = orbitState;
+  const x = targetX + radius * Math.sin(phi) * Math.sin(theta);
+  const z = targetZ + radius * Math.sin(phi) * Math.cos(theta);
+  const y = radius * Math.cos(phi);
+  three.camera.position.set(x, y, z);
+  three.camera.lookAt(targetX, 1, targetZ);
+}
+
+function buildThreeScene(roomsList, centroid){
+  if (!initThree()) return;
+  if (three.group) three.scene.remove(three.group);
+  const group = new THREE.Group();
+
+  // Plan (x=east, y=south) maps to 3D (X=east, Z=south, Y=up).
+  roomsList.forEach(r => {
+    const geo = new THREE.BoxGeometry(r.w, r.h, r.d);
+    const isVastu = r.type !== "OTHER";
+    const mat = new THREE.MeshStandardMaterial({
+      color: isVastu ? 0x7dc4ff : 0xbbbbbb,
+      transparent: true, opacity: 0.55, roughness: 0.7
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(r.x + r.w/2 - (centroid ? centroid.x : 0), r.h/2, r.y + r.d/2 - (centroid ? centroid.y : 0));
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(geo),
+      new THREE.LineBasicMaterial({ color: 0xffffff })
+    );
+    edges.position.copy(mesh.position);
+    group.add(mesh);
+    group.add(edges);
+  });
+
+  three.scene.add(group);
+  three.group = group;
+
+  const maxDim = Math.max(...roomsList.map(r => Math.max(r.w, r.d)), 6);
+  orbitState.radius = maxDim * 1.8;
+}
+
+function renderComplianceList(roomsList, centroid){
+  const listEl = document.getElementById("complianceList");
+  listEl.innerHTML = "";
+  roomsList.forEach(r => {
+    if (r.type === "OTHER" || !centroid) return;
+    const bearing = roomBearingFromCentroid(r, centroid);
+    const dir8 = sectorName(sectorIndex(bearing, 8), 8);
+    const result = evaluateMatrix(r.type, dir8);
+    const badgeCls = result.status === "IDEAL" ? "badge-ideal" : (result.status === "FORBIDDEN" ? "badge-forbidden" : "badge-remedy");
+    const badgeLabel = result.status === "IDEAL" ? "Ideal" : (result.status === "FORBIDDEN" ? "Forbidden" : "Remedy");
+    const label = ROOM_TYPES.find(t => t.key === r.type).label;
+    const row = document.createElement("div");
+    row.className = "room-compliance-row";
+    row.innerHTML =
+      '<span>' + label + ' — ' + dir8 + ' (' + Math.round(bearing) + '°)</span>' +
+      '<span class="badge ' + badgeCls + '">' + badgeLabel + '</span>';
+    listEl.appendChild(row);
+  });
+}
+
+document.getElementById("buildDesignBtn").addEventListener("click", () => {
+  if (rooms.length === 0) return;
+  const centroid = buildingCentroid(rooms);
+  document.getElementById("viewToggle").style.display = "flex";
+  document.getElementById("plan2dCard").style.display = "block";
+  document.getElementById("plan3dCard").style.display = "none";
+  document.getElementById("complianceCard").style.display = "block";
+  drawPlan2d(rooms, centroid);
+  buildThreeScene(rooms, centroid);
+  renderComplianceList(rooms, centroid);
+});
+
+document.getElementById("show2dBtn").addEventListener("click", () => {
+  document.getElementById("plan2dCard").style.display = "block";
+  document.getElementById("plan3dCard").style.display = "none";
+  three.autoOrbit = false;
+});
+document.getElementById("show3dBtn").addEventListener("click", () => {
+  document.getElementById("plan2dCard").style.display = "none";
+  document.getElementById("plan3dCard").style.display = "block";
+});
+document.getElementById("flythroughBtn").addEventListener("click", () => {
+  document.getElementById("plan2dCard").style.display = "none";
+  document.getElementById("plan3dCard").style.display = "block";
+  three.autoOrbit = !three.autoOrbit;
+});
+
+/* ==================================================================
+   Dutch renovation rules — preliminary vergunningsvrij (permit-free)
+   checker against national Bbl defaults, plus known gemeente overlays
+   for Amsterdam and Haarlemmermeer. Deliberately conservative:
+   anything uncertain resolves to "maybe/confirm locally" rather than
+   a false "ok". Sourced against Bbl/Omgevingswet guidance and each
+   gemeente's published policy pages, current as of 2026 — see README
+   for citations. NOT legal advice.
+   ================================================================== */
+
+// National staffel (bebouwingspercentage) for bijbehorende bouwwerken
+// (aanbouw/uitbouw/bijgebouw combined) in the achtererfgebied. Exact
+// figures as commonly published for the Bbl-era rules:
+//   - achtererfgebied <=100m²: max 50% bebouwd
+//   - 100-300m²: 50m² + 20% of the part above 100m²
+//   - >300m²: 90m² + 10% of the part above 300m²
+//   - absolute national cap: 150m², regardless of plot size
+function maxBebouwing(achtererfM2){
+  if (achtererfM2 <= 100) return achtererfM2 * 0.5;
+  if (achtererfM2 <= 300) return 50 + (achtererfM2 - 100) * 0.2;
+  return Math.min(150, 90 + (achtererfM2 - 300) * 0.1);
+}
+
+const GEMEENTE_NOTES = {
+  amsterdam:
+    "Amsterdam heeft een eigen welstandsnota (\"De Schoonheid van " +
+    "Amsterdam\"), getoetst door de Commissie Ruimtelijke Kwaliteit " +
+    "(CRK). In de meeste buurten is vrijwel niets welstandsvrij, en de " +
+    "regels verschillen sterk per stadsdeel/buurt. Amsterdam staat geen " +
+    "\"stapeling van afwijkingen\" toe — bijvoorbeeld een terras op een " +
+    "dakopbouw, of een aanbouw op een bestaande aanbouw.",
+  haarlemmermeer:
+    "Haarlemmermeer heeft de landelijke vergunningsvrije regels op " +
+    "onderdelen VERRUIMD via artikel 5.19 van het eigen Omgevingsplan — " +
+    "u mag er in bepaalde gevallen meer zonder vergunning bouwen dan " +
+    "hieronder als landelijke bodem staat, inclusief een vergunningsvrije " +
+    "erker of dakkapel aan de voorzijde onder voorwaarden. De " +
+    "Omgevingsloket-check rekent dit al mee. Sommige buurten zijn " +
+    "aangewezen als welstandsvrij gebied (check de Omgevingsviewer " +
+    "Haarlemmermeer). Groot deel van de gemeente ligt binnen het " +
+    "Luchthavenindelingbesluit Schiphol (LIB) — dat legt in bepaalde " +
+    "zones extra hoogtebeperkingen en beperkingen voor geluidgevoelige " +
+    "gebouwen op, los van de achtererfgebied-regels hieronder. Controleer " +
+    "dit altijd apart voor uw exacte adres.",
+};
+
+function withGemeenteNote(result, gemeente){
+  const note = GEMEENTE_NOTES[gemeente];
+  if (!note) return result;
+  return Object.assign({}, result, {
+    explanation: result.explanation + " · " + note
+  });
+}
+
+function evaluateAanbouw(p){
+  if (p.isMonument) {
+    return { verdict: "no", title: "Vergunning waarschijnlijk verplicht (monument)",
+      explanation: "Rijksmonumenten en de meeste gemeentelijke monumenten vallen vrijwel altijd onder vergunningplicht voor uiterlijke wijzigingen, ook in het achtererfgebied." };
+  }
+  if (p.location !== "achter") {
+    return { verdict: "no", title: "Vergunning waarschijnlijk verplicht (niet in achtererfgebied)",
+      explanation: "De landelijke vergunningsvrije regeling voor aan- en uitbouwen geldt alleen in het achtererfgebied — dat begint 1 meter achter de voorgevellijn, niet pas bij de achtergevel. Een uitbreiding aan de voor- of zijkant die grenst aan openbaar toegankelijk gebied valt hier niet onder." };
+  }
+  if (p.depth > 4) {
+    return { verdict: "no", title: "Vergunning verplicht (dieper dan 4 meter)",
+      explanation: "Een aan- of uitbouw dieper dan 4 meter, gemeten vanaf de oorspronkelijke achtergevel, is altijd vergunningplichtig onder de huidige regels." };
+  }
+  if (p.height > 5) {
+    return { verdict: "no", title: "Vergunning waarschijnlijk verplicht (hoger dan 5 meter)",
+      explanation: "De maximale hoogte voor een vergunningsvrije aanbouw is 5 meter, en de aanbouw mag nooit hoger zijn dan het hoofdgebouw (en niet meer dan 30cm boven de vloer van de eerste verdieping uitsteken)." };
+  }
+  let explanation = "Diepte (" + p.depth + "m, grens 4m) en hoogte (" + p.height + "m, grens 5m) passen binnen de landelijke hoofdregels voor het achtererfgebied.";
+  if (p.achtererfM2 > 0) {
+    const cap = maxBebouwing(p.achtererfM2);
+    explanation += " Bij een achtererf van " + p.achtererfM2 + "m² is de landelijke staffelregel voor totale bebouwing (alle aan-/uitbouwen en bijgebouwen samen) ongeveer " + cap.toFixed(0) + "m² (max. 150m² absoluut) — als uw bestaande plus geplande bebouwing daar overheen gaat, is alsnog een vergunning nodig.";
+  }
+  explanation += " Dit is geen garantie: de 30cm-regel boven de eerste verdiepingsvloer, uw gemeente's omgevingsplan en eventueel welstandsbeleid kunnen alsnog een vergunning vereisen.";
+  return { verdict: "maybe", title: "Mogelijk vergunningsvrij — bevestig lokaal", explanation };
+}
+
+function evaluateDakkapel(p){
+  if (p.isMonument) {
+    return { verdict: "no", title: "Vergunning waarschijnlijk verplicht (monument)",
+      explanation: "Bij monumenten is een dakkapel vrijwel altijd vergunningplichtig." };
+  }
+  if (p.location === "voor") {
+    return { verdict: "maybe", title: "Vaak vergunningplichtig aan de voorzijde",
+      explanation: "Een dakkapel in het voordakvlak (zichtbaar vanaf de openbare weg) is aanzienlijk vaker vergunningplichtig dan aan de achterzijde, en hangt sterk af van het gemeentelijke omgevingsplan en welstandsbeleid. Controleer dit specifiek voor je adres." };
+  }
+  return { verdict: "maybe", title: "Mogelijk vergunningsvrij aan de achterzijde — bevestig lokaal",
+    explanation: "Een dakkapel in het achterdakvlak is vaak vergunningsvrij als de nok niet wordt overschreden en er minimaal 0,5m afstand tot de dakrand/goot en nok blijft. De exacte maatvoering en de vraag of jouw dak hieraan voldoet, moet je bevestigen via Omgevingsloket of je gemeente." };
+}
+
+function evaluateDakopbouw(p){
+  if (p.isMonument) {
+    return { verdict: "no", title: "Vergunning verplicht (monument)",
+      explanation: "Bij monumenten is een dakopbouw of dakloggia altijd vergunningplichtig." };
+  }
+  return { verdict: "no", title: "Vergunning altijd verplicht",
+    explanation: "Een dakopbouw (toevoeging aan de bouwmassa van een schuin of plat dak) en een dakloggia (inpandig balkon in de kap) vallen NIET onder de sneltoetscriteria voor dakkapellen. Dit is altijd een reguliere, vergunningplichtige bouwactiviteit met welstandsadvies, ongeacht afmeting of gemeente." };
+}
+
+function evaluateDakterras(p){
+  if (p.isMonument) {
+    return { verdict: "no", title: "Vergunning verplicht (monument)",
+      explanation: "Bij monumenten is een dakterras altijd vergunningplichtig." };
+  }
+  return { verdict: "maybe", title: "Vaak vergunningplichtig — controleer lokaal",
+    explanation: "Een dakterras (verhoogd gebruik van een dak als buitenruimte, doorgaans met balustrade) is in de meeste gemeenten niet zomaar vergunningsvrij: de gemeente toetst constructieve veiligheid, welstand en privacy van buren. Bij een appartement is bovendien vaak schriftelijke VvE-toestemming nodig (vaak 2/3-meerderheid plus aanpassing van de splitsingsakte)." };
+}
+
+function evaluateBijgebouw(p){
+  if (p.isMonument) {
+    return { verdict: "no", title: "Vergunning waarschijnlijk verplicht (monument)",
+      explanation: "Bij monumenten is een vrijstaand bijgebouw vrijwel altijd vergunningplichtig." };
+  }
+  if (p.location !== "achter") {
+    return { verdict: "no", title: "Vergunning waarschijnlijk verplicht (niet in achtererfgebied)",
+      explanation: "Vrijstaande bijgebouwen zijn alleen onder de landelijke regeling vergunningsvrij als ze in het achtererfgebied staan (dat begint 1 meter achter de voorgevellijn)." };
+  }
+  if (p.height > 5) {
+    return { verdict: "no", title: "Vergunning waarschijnlijk verplicht (hoger dan 5 meter)",
+      explanation: "5 meter is doorgaans de landelijke maximumhoogte voor een vergunningsvrij bijgebouw; binnen 1 meter van de erfgrens gelden vaak strengere (lagere) hoogte-eisen — controleer dit lokaal." };
+  }
+  let explanation = "Hoogte (" + p.height + "m, landelijke grens doorgaans 5m) past binnen de hoofdregel voor het achtererfgebied.";
+  if (p.achtererfM2 > 0) {
+    const cap = maxBebouwing(p.achtererfM2);
+    explanation += " Bij een achtererf van " + p.achtererfM2 + "m² is de landelijke staffelregel voor totale bebouwing (alle bijgebouwen en aan-/uitbouwen samen) ongeveer " + cap.toFixed(0) + "m² (max. 150m² absoluut) — dit is de meest voorkomende reden dat een op zich kleine schuur alsnog vergunningplichtig blijkt, vooral als er al andere bijgebouwen of aanbouwen staan.";
+  }
+  return { verdict: "maybe", title: "Mogelijk vergunningsvrij — bevestig lokaal", explanation };
+}
+
+function evaluateSchutting(p){
+  if (p.location === "voor" && p.height > 1) {
+    return { verdict: "no", title: "Vergunning waarschijnlijk verplicht (hoger dan 1m, voorzijde)",
+      explanation: "Erfafscheidingen vóór de voorgevellijn zijn doorgaans alleen vergunningsvrij tot 1 meter hoogte." };
+  }
+  if (p.location === "achter" && p.height > 2) {
+    return { verdict: "no", title: "Vergunning waarschijnlijk verplicht (hoger dan 2m)",
+      explanation: "Erfafscheidingen achter de voorgevellijn (zij- en achtererf) zijn doorgaans tot 2 meter vergunningsvrij." };
+  }
+  return { verdict: "maybe", title: "Vermoedelijk vergunningsvrij — bevestig lokaal",
+    explanation: "Hoogte " + p.height + "m past binnen de gebruikelijke landelijke grens voor deze locatie (1m voor de voorgevellijn, 2m erachter). Sommige gemeenten en VvE's/burenrecht kunnen aanvullende eisen stellen." };
+}
+
+function evaluateZonnepanelen(p){
+  if (p.isMonument) {
+    return { verdict: "maybe", title: "Vaak wel mogelijk, maar met extra voorwaarden (monument)",
+      explanation: "Zonnepanelen op monumenten zijn steeds vaker vergunningsvrij mogelijk onder voorwaarden (bijvoorbeeld niet zichtbaar vanaf de openbare weg, of een specifieke montagewijze), maar dit verschilt sterk per gemeente en monument. Controleer dit specifiek." };
+  }
+  return { verdict: "ok", title: "Doorgaans vergunningsvrij",
+    explanation: "Zonnepanelen op een schuin dak, in of direct op het dakvlak, zijn onder de landelijke regels vrijwel altijd vergunningsvrij, ook buiten het achtererfgebied. Losstaande veldopstellingen (in de tuin) volgen andere regels — controleer dat apart als van toepassing." };
+}
+
+function evaluateDutchRules(workType, p, gemeente){
+  gemeente = gemeente || "landelijk";
+  let result;
+  if (workType === "aanbouw") result = evaluateAanbouw(p);
+  else if (workType === "dakkapel") result = evaluateDakkapel(p);
+  else if (workType === "dakopbouw") result = evaluateDakopbouw(p);
+  else if (workType === "dakterras") result = evaluateDakterras(p);
+  else if (workType === "bijgebouw") result = evaluateBijgebouw(p);
+  else if (workType === "schutting") result = evaluateSchutting(p);
+  else if (workType === "zonnepanelen") result = evaluateZonnepanelen(p);
+  else result = { verdict: "maybe", title: "Onbekend type", explanation: "Kies een type hierboven." };
+
+  // Amsterdam categorically requires a permit for dakopbouw/dakloggia and
+  // (almost always) for dakterras, regardless of the general verdict above.
+  if (gemeente === "amsterdam" && (workType === "dakopbouw" || workType === "dakterras")) {
+    result = Object.assign({}, result, { verdict: "no" });
+  }
+
+  return withGemeenteNote(result, gemeente);
+}
+
+const WORK_FIELDS = {
+  aanbouw: [
+    { key: "depth", label: "Diepte (m)", type: "number", def: 3 },
+    { key: "height", label: "Hoogte (m)", type: "number", def: 3.5 },
+    { key: "location", label: "Locatie", type: "select", opts: [["achter","Achtererfgebied"],["voor","Voor-/zijerf"]] },
+    { key: "achtererfM2", label: "Grootte achtererf (m², 0 = onbekend/overslaan)", type: "number", def: 0 },
+    { key: "isMonument", label: "Monument / beschermd stadsgezicht?", type: "select", opts: [["no","Nee"],["yes","Ja"]] },
+  ],
+  dakkapel: [
+    { key: "location", label: "Op welk dakvlak?", type: "select", opts: [["achter","Achterdakvlak"],["voor","Voordakvlak"]] },
+    { key: "isMonument", label: "Monument?", type: "select", opts: [["no","Nee"],["yes","Ja"]] },
+  ],
+  dakopbouw: [
+    { key: "isMonument", label: "Monument?", type: "select", opts: [["no","Nee"],["yes","Ja"]] },
+  ],
+  dakterras: [
+    { key: "isMonument", label: "Monument?", type: "select", opts: [["no","Nee"],["yes","Ja"]] },
+  ],
+  bijgebouw: [
+    { key: "height", label: "Hoogte (m)", type: "number", def: 3 },
+    { key: "location", label: "Locatie", type: "select", opts: [["achter","Achtererfgebied"],["voor","Voor-/zijerf"]] },
+    { key: "achtererfM2", label: "Grootte achtererf (m², 0 = onbekend/overslaan)", type: "number", def: 0 },
+    { key: "isMonument", label: "Monument?", type: "select", opts: [["no","Nee"],["yes","Ja"]] },
+  ],
+  schutting: [
+    { key: "height", label: "Hoogte (m)", type: "number", def: 1.8 },
+    { key: "location", label: "Locatie", type: "select", opts: [["achter","Achter de voorgevellijn"],["voor","Vóór de voorgevellijn"]] },
+  ],
+  zonnepanelen: [
+    { key: "isMonument", label: "Monument?", type: "select", opts: [["no","Nee"],["yes","Ja"]] },
+  ],
+};
+
+function renderWorkFields(){
+  const type = document.getElementById("workType").value;
+  const container = document.getElementById("workFields");
+  container.innerHTML = "";
+  WORK_FIELDS[type].forEach(f => {
+    const wrap = document.createElement("div");
+    wrap.style.marginTop = "8px";
+    const labelEl = document.createElement("div");
+    labelEl.className = "small";
+    labelEl.textContent = f.label;
+    wrap.appendChild(labelEl);
+    if (f.type === "number") {
+      const inp = document.createElement("input");
+      inp.type = "number"; inp.id = "field_" + f.key; inp.value = f.def;
+      wrap.appendChild(inp);
+    } else {
+      const sel = document.createElement("select");
+      sel.className = "full"; sel.id = "field_" + f.key;
+      f.opts.forEach(([val, label]) => {
+        const opt = document.createElement("option");
+        opt.value = val; opt.textContent = label;
+        sel.appendChild(opt);
+      });
+      wrap.appendChild(sel);
+    }
+    container.appendChild(wrap);
+  });
+}
+document.getElementById("workType").addEventListener("change", renderWorkFields);
+renderWorkFields();
+
+document.getElementById("checkRulesBtn").addEventListener("click", () => {
+  const type = document.getElementById("workType").value;
+  const gemeente = document.getElementById("gemeenteSelect").value;
+  const params = {};
+  WORK_FIELDS[type].forEach(f => {
+    const el = document.getElementById("field_" + f.key);
+    if (f.type === "number") params[f.key] = parseFloat(el.value) || 0;
+    else params[f.key] = el.value === "yes" ? true : (el.value === "no" ? false : el.value);
+  });
+  const result = evaluateDutchRules(type, params, gemeente);
+  const cls = result.verdict === "ok" ? "verdict-ok" : (result.verdict === "no" ? "verdict-no" : "verdict-maybe");
+  document.getElementById("rulesResult").innerHTML =
+    '<div class="card ' + cls + '"><h2>' + result.title + '</h2><p>' + result.explanation + '</p></div>';
+});
+
+/* ==================================================================
+   Lens tab: AI room detection + manual tagging.
+
+   AI detection uses TensorFlow.js + COCO-SSD (loaded lazily from a
+   CDN, only when the user turns it on — real client-side object
+   detection, not a fake/simulated result). COCO-SSD recognizes 80
+   general everyday-object classes; it is NOT a dedicated room
+   classifier, so inferRoomFromDetections() (defined earlier, and unit
+   tested) is a heuristic that can misfire. Manual tagging is always
+   available regardless of whether AI detection is on, loaded, or
+   working, specifically so a misfire is never the only option.
+   ================================================================== */
+
+let aiEnabled = false;
+let cocoModel = null;
+let cocoLoading = false;
+let detectionTimer = null;
+let taggedRooms = [];
+
+function populateManualRoomSelect(){
+  const sel = document.getElementById("manualRoomSelect");
+  sel.innerHTML = "";
+  ROOM_TYPES.filter(t => t.key !== "OTHER").forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t.key;
+    opt.textContent = t.label;
+    sel.appendChild(opt);
+  });
+}
+populateManualRoomSelect();
+
+document.getElementById("tagPanelToggleBtn").addEventListener("click", () => {
+  const panel = document.getElementById("tagPanel");
+  panel.style.display = panel.style.display === "none" ? "block" : "none";
+});
+
+function renderTaggedRooms(){
+  const listEl = document.getElementById("taggedRoomsList");
+  if (taggedRooms.length === 0) {
+    listEl.innerHTML = '<p class="small">No tags yet — pick a room type above and tap Save tag while facing that part of the house.</p>';
+    return;
+  }
+  listEl.innerHTML = "";
+  taggedRooms.forEach((t, i) => {
+    const row = document.createElement("div");
+    row.className = "tag-row";
+    const r = evaluateMatrix(t.room, t.direction8);
+    const statusShort = r.status === "IDEAL" ? "Ideal" : (r.status === "FORBIDDEN" ? "Forbidden" : "Remedy");
+    row.innerHTML =
+      '<span>' + roomLabel(t.room) + ' — ' + t.direction8 + ' (' + statusShort + ')</span>' +
+      '<button data-remove="' + i + '">✕</button>';
+    listEl.appendChild(row);
+  });
+  listEl.querySelectorAll("button[data-remove]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      taggedRooms.splice(parseInt(btn.dataset.remove, 10), 1);
+      renderTaggedRooms();
+    });
+  });
+}
+renderTaggedRooms();
+
+document.getElementById("tagRoomBtn").addEventListener("click", () => {
+  if (!canAnalyze()) {
+    document.getElementById("taggedRoomsList").innerHTML =
+      '<p class="small">Sensor accuracy is too low to trust the current direction — recalibrate before tagging.</p>';
+    return;
+  }
+  const room = document.getElementById("manualRoomSelect").value;
+  const dir8 = sectorName(sectorIndex(currentHeading(), 8), 8);
+  taggedRooms.push({ room, direction8: dir8, manual: true });
+  renderTaggedRooms();
+});
+
+async function loadCocoModel(){
+  if (cocoModel || cocoLoading) return;
+  cocoLoading = true;
+  const banner = document.getElementById("detectionBanner");
+  banner.style.display = "block";
+  banner.textContent = "Loading AI room-detection model (a few MB, first time only)…";
+  try {
+    if (typeof tf === "undefined") {
+      await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js");
+    }
+    if (typeof cocoSsd === "undefined") {
+      await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js");
+    }
+    cocoModel = await cocoSsd.load();
+    banner.textContent = "AI room detection ready. Point the camera at a room — this uses general object detection (stove, sink, bed, etc.), not a dedicated room classifier, so double-check it against what you actually see.";
+  } catch (e) {
+    banner.textContent = "Could not load the AI model (needs an internet connection the first time). Manual tagging still works.";
+    aiEnabled = false;
+    document.getElementById("aiToggleBtn").textContent = "AI room detect: Off";
+  }
+  cocoLoading = false;
+}
+
+function loadScript(src){
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+async function runDetectionOnce(){
+  if (!aiEnabled || !cocoModel || !cameraStarted) return;
+  try {
+    const predictions = await cocoModel.detect(lensVideo);
+    const classes = predictions
+      .filter(p => p.score > 0.5)
+      .map(p => p.class);
+    const inferred = inferRoomFromDetections(classes);
+    const banner = document.getElementById("detectionBanner");
+    banner.style.display = "block";
+    if (inferred && canAnalyze()) {
+      const dir8 = sectorName(sectorIndex(currentHeading(), 8), 8);
+      const r = evaluateMatrix(inferred.room, dir8);
+      const statusLabel = r.status === "IDEAL" ? "Ideal" : (r.status === "FORBIDDEN" ? "Forbidden" : "Permissible with remedy");
+      banner.innerHTML =
+        '<strong>Detected: ' + roomLabel(inferred.room) + '</strong> (via ' + inferred.matchedClasses.join(", ") + ')<br>' +
+        'Facing ' + dir8 + ' — ' + statusLabel + '. ' + r.explanation +
+        (r.remedy ? ' <em>Remedy: ' + r.remedy + '</em>' : '');
+    } else if (inferred) {
+      banner.textContent = "Detected: " + roomLabel(inferred.room) + " (via " + inferred.matchedClasses.join(", ") + ") — recalibrate for a direction-based suggestion.";
+    } else {
+      banner.textContent = "AI room detection on — no recognizable kitchen/bathroom/bedroom/living-room objects in view right now.";
+    }
+  } catch (e) {
+    // Detection hiccup on a single frame — not worth interrupting the
+    // user over; the next scheduled run will just try again.
+  }
+}
+
+document.getElementById("aiToggleBtn").addEventListener("click", async () => {
+  aiEnabled = !aiEnabled;
+  document.getElementById("aiToggleBtn").textContent = "AI room detect: " + (aiEnabled ? "On" : "Off");
+  if (aiEnabled) {
+    await loadCocoModel();
+    if (detectionTimer) clearInterval(detectionTimer);
+    detectionTimer = setInterval(runDetectionOnce, 1500);
+  } else {
+    if (detectionTimer) { clearInterval(detectionTimer); detectionTimer = null; }
+    document.getElementById("detectionBanner").style.display = "none";
+  }
+});
+</script>
+
+</body>
+</html>
