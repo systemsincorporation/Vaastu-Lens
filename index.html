@@ -123,6 +123,11 @@
     filter: blur(6px); pointer-events: none;
   }
   #dialCanvas { position: relative; touch-action: none; }
+  #dialNameStrip {
+    display: flex; justify-content: center; align-items: baseline; gap: 14px;
+    margin: 4px 0 10px; font-size: 12px; color: var(--text-dim); flex-wrap: nowrap;
+  }
+  #dialNameStrip span.current { color: var(--accent); font-weight: 800; font-size: 15px; }
 
   /* Status stack: overlapping grid cell so swapping which card is
      visible crossfades via opacity instead of a display:none layout
@@ -142,11 +147,11 @@
   #lensScrim { position: absolute; inset: 0; background: rgba(0,0,0,0.12); }
   #lensCanvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   #lensLabels {
-    position: absolute; left: 0; right: 0; top: 50%; transform: translateY(28px);
-    display: flex; justify-content: center; gap: 22px; pointer-events: none;
+    position: absolute; left: 0; right: 0; top: 50%; transform: translateY(26px);
+    height: 20px; pointer-events: none;
   }
-  #lensLabels span { color: #fff; font-size: 13px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
-  #lensLabels span.current { color: #ffe066; }
+  #lensLabels span { position: absolute; color: #fff; font-size: 11.5px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,0.8); white-space: nowrap; }
+  #lensLabels span.current { color: #ffe066; font-size: 13px; }
   #lensInfo {
     position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%);
     background: rgba(10,8,16,0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
@@ -224,6 +229,14 @@
     color: var(--accent); padding: 10px; border-radius: 10px; font-size: 13px; font-weight: 600; margin-top: 6px;
     text-decoration: none;
   }
+
+  /* Guide tab: 32-point glossary table */
+  #compassGlossaryTable table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  #compassGlossaryTable th { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--glass-border); color: var(--text-dim); font-weight: 700; }
+  #compassGlossaryTable td { padding: 6px 4px; border-bottom: 1px solid var(--glass-border); }
+  #compassGlossaryTable tr.primary-point td { font-weight: 700; }
+  #compassGlossaryTable .abbr-col { width: 20%; }
+  #compassGlossaryTable .deg-col { width: 22%; color: var(--text-dim); }
 </style>
 </head>
 <body>
@@ -237,6 +250,7 @@
       <button data-tab="matrix">Matrix</button>
       <button data-tab="design">Design</button>
       <button data-tab="nlrules">NL Rules</button>
+      <button data-tab="guide">Guide</button>
     </nav>
   </header>
   <main>
@@ -277,6 +291,9 @@
       </div>
 
       <div id="dial-wrap"><div id="dialGlow"></div><canvas id="dialCanvas" width="280" height="280"></canvas></div>
+
+      <div id="dialNameStrip"></div>
+      <button id="openGuideBtn" class="ghost" style="margin-bottom:14px;">See all 32 direction names &amp; how to measure your home →</button>
 
       <div class="card" id="directionInsightCard" style="display:none;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -561,6 +578,117 @@
       </div>
     </section>
 
+    <!-- GUIDE SCREEN -->
+    <section id="guideScreen" class="screen">
+      <div class="card">
+        <h2>How to find your home's directions</h2>
+        <p>A compass reading is only as good as how it's taken. This
+        covers the steps, what all 32 direction names actually mean,
+        and how to handle a multi-floor house without re-measuring
+        every level.</p>
+      </div>
+
+      <div class="card">
+        <h2>1. Calibrate first, every time you move rooms</h2>
+        <p>Take off any case with a magnetic clasp or a magnetic
+        watch/ring nearby. Move away from fridges, speakers, laptops,
+        steel doors and window frames, and rebar-heavy concrete —
+        these are the most common sources of a wrong reading, far more
+        than the phone itself. Then wave the phone in a slow
+        figure-eight for a few seconds. Do this again every time you
+        change rooms, not just once at the start.</p>
+      </div>
+
+      <div class="card">
+        <h2>2. Hold it flat and pick the right spot to stand</h2>
+        <p>Hold the phone flat and level, screen up, like a handheld
+        compass. Where you stand depends on what you're measuring:</p>
+        <ul style="margin:8px 0 0 18px; padding:0; font-size:13px; color:var(--text-dim); line-height:1.6;">
+          <li><strong>Main entrance direction:</strong> stand at the
+          threshold, facing outward — the direction you'd walk if you
+          were leaving the house.</li>
+          <li><strong>A room's facing direction:</strong> stand at the
+          center of that room, face the specific wall you're
+          evaluating (e.g. the wall with the main window, or the wall
+          a bed's headboard would sit against), and read the heading
+          while facing it.</li>
+          <li><strong>The whole plot's orientation:</strong> stand at
+          the boundary, facing along the main front wall line, not
+          diagonally across the plot — or use the Center tab's
+          Rectangle/Custom/Camera+GPS entry instead of a single
+          reading.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>3. Take more than one reading</h2>
+        <p>Take 2-3 readings a few seconds apart, recalibrating between
+        them. Only trust them if they agree within the ± error shown
+        under the heading number on the Dial tab. If they don't agree,
+        something nearby is disturbing the sensor — move a step or two
+        and try again, rather than trusting whichever number you got
+        first.</p>
+      </div>
+
+      <div class="card">
+        <h2>Multi-floor houses (and Dutch rowhouses specifically)</h2>
+        <p><strong>The core idea: a building's compass orientation
+        does not change from floor to floor.</strong> North is the same
+        direction on the third floor as it is on the ground floor,
+        because the floors don't rotate relative to each other — only
+        the building's footprint (measured once) sets the orientation
+        for every level above it. You do not need to re-measure the
+        compass bearing on each floor separately; you only need to
+        re-map which room sits where within that same shared footprint.</p>
+        <p style="margin-top:8px;">Practically: measure once, ideally
+        outdoors at the main entrance or in the back garden (better GPS
+        fix for true north, less indoor interference), and note that
+        bearing as the building's front-facade direction. Every floor
+        above inherits it. If you want a per-floor Vastu read, use the
+        Design tab once per floor with each floor's own room layout —
+        the room positions will differ, but they all sit inside the
+        same compass orientation you already measured.</p>
+        <p style="margin-top:8px;"><strong>Dutch rowhouses
+        (rijtjeshuizen / grachtenpanden) specifically:</strong> these
+        are almost always a simple rectangle — a narrow street-facing
+        front facade, a garden-facing back facade directly opposite,
+        and two long party walls shared with the neighboring houses on
+        either side (usually windowless, since they're shared
+        structural walls). That means, for a typical rectangular
+        rowhouse:</p>
+        <ul style="margin:8px 0 0 18px; padding:0; font-size:13px; color:var(--text-dim); line-height:1.6;">
+          <li>Front facade direction = one reading at the front door,
+          facing the street.</li>
+          <li>Back facade (garden side) = that same bearing + 180°.</li>
+          <li>The two party walls = that same bearing ± 90°.</li>
+        </ul>
+        <p style="margin-top:8px;">One outdoor reading at the front
+        door is usually enough for the whole house, every floor
+        included. The exception is a house that isn't a plain
+        rectangle — an angled plot relative to the street, an L-shaped
+        rear extension, or a dormer that changes the effective shape
+        on upper floors. For any of those, confirm with the Center
+        tab's Custom polygon entry (or Camera+GPS outdoors) rather than
+        assuming the simple ±90°/180° rule holds — and if a stairwell
+        or elevator shaft (steel) sits between rooms you're comparing,
+        recalibrate on each side of it rather than carrying one reading
+        past it.</p>
+      </div>
+
+      <div class="card">
+        <h2>All 32 compass points</h2>
+        <p>The abbreviations shown throughout the app (Dial, Lens,
+        Matrix, Design) are the standard 32-point maritime compass
+        rose — not Vastu-specific, so there's no ambiguity in what they
+        mean. Each of the 32 sectors is 11.25° wide. The 8 primary
+        points (N, NE, E, SE, S, SW, W, NW) each split into 4 finer
+        points; the "by" points (like NbE, "North by East") sit exactly
+        halfway between a primary point and the next named point
+        toward it.</p>
+        <div id="compassGlossaryTable" style="margin-top:10px;"></div>
+      </div>
+    </section>
+
   </main>
 </div>
 
@@ -583,6 +711,43 @@ const NAMES_32 = [
   "S","SbW","SSW","SWbS","SW","SWbW","WSW","WbS",
   "W","WbN","WNW","NWbW","NW","NWbN","NNW","NbW"
 ];
+
+// Full names for the same 32 points, in the same order — used only by
+// the teaching/reference content (Guide tab, direction glossary), not
+// by any live-reading logic, so it can't drift out of sync with what a
+// live reading actually shows.
+const FULL_NAMES_32 = [
+  "North", "North by East", "North-Northeast", "Northeast by North",
+  "Northeast", "Northeast by East", "East-Northeast", "East by North",
+  "East", "East by South", "East-Southeast", "Southeast by East",
+  "Southeast", "Southeast by South", "South-Southeast", "South by East",
+  "South", "South by West", "South-Southwest", "Southwest by South",
+  "Southwest", "Southwest by West", "West-Southwest", "West by South",
+  "West", "West by North", "West-Northwest", "Northwest by West",
+  "Northwest", "Northwest by North", "North-Northwest", "North by West"
+];
+
+function fullNameFor32(index){
+  return FULL_NAMES_32[index];
+}
+
+function renderCompassGlossary(){
+  const container = document.getElementById("compassGlossaryTable");
+  if (!container) return;
+  let rows = "";
+  for (let i = 0; i < 32; i++) {
+    const isPrimary = i % 4 === 0; // N, NE, E, SE, S, SW, W, NW
+    rows += '<tr class="' + (isPrimary ? "primary-point" : "") + '">' +
+      '<td class="abbr-col">' + NAMES_32[i] + '</td>' +
+      '<td>' + FULL_NAMES_32[i] + '</td>' +
+      '<td class="deg-col">' + (i * 11.25).toFixed(2).replace(/\.?0+$/, "") + '°</td>' +
+      '</tr>';
+  }
+  container.innerHTML =
+    '<table><thead><tr><th class="abbr-col">Abbr.</th><th>Full name</th><th class="deg-col">Center</th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table>';
+}
+renderCompassGlossary();
 
 function normalize(v){ return ((v % 360) + 360) % 360; }
 
@@ -964,6 +1129,26 @@ document.getElementById("sectorSeg").addEventListener("click", (e) => {
 const dialCanvas = document.getElementById("dialCanvas");
 const dctx = dialCanvas.getContext("2d");
 
+function updateDialNameStrip(currentIdx, count){
+  const strip = document.getElementById("dialNameStrip");
+  const span = 2; // show 2 sectors either side of current
+  const indices = [];
+  for (let d = -span; d <= span; d++) {
+    indices.push(((currentIdx + d) % count + count) % count);
+  }
+  strip.innerHTML = "";
+  indices.forEach((i, pos) => {
+    const el = document.createElement("span");
+    el.textContent = sectorName(i, count);
+    if (pos === span) el.className = "current";
+    strip.appendChild(el);
+  });
+}
+
+document.getElementById("openGuideBtn").addEventListener("click", () => {
+  document.querySelector('header nav button[data-tab="guide"]').click();
+});
+
 function drawDial(heading, count, highlightedIndex, risk){
   const w = dialCanvas.width, h = dialCanvas.height;
   dctx.clearRect(0,0,w,h); // transparent — no opaque fill, the app's glassy background shows through
@@ -1060,6 +1245,7 @@ function render(){
   document.getElementById("sectorName").textContent =
     sectorName(idx, state.sectorCount) + " (sector " + (idx+1) + " of " + state.sectorCount + ")" + blockLabel;
   document.getElementById("sectorVedic").textContent = sectorVedicName(idx, state.sectorCount);
+  updateDialNameStrip(idx, state.sectorCount);
   document.getElementById("refLine").textContent =
     "Reference: " + (state.reference === "true" ? "true north" : "magnetic north");
   document.getElementById("fallbackLine").style.display = usingMagneticFallback() ? "block" : "none";
@@ -1197,15 +1383,19 @@ function renderLens(heading, currentIdx, risk){
     lctx.beginPath();
     lctx.moveTo(x, midY-12); lctx.lineTo(x, midY+12);
     lctx.stroke();
-  }
 
-  const prevIdx = (currentIdx-1+count)%count, nextIdx = (currentIdx+1)%count;
-  [prevIdx, currentIdx, nextIdx].forEach(i => {
+    // Label every sector actually in view, not just the current one and
+    // its immediate neighbors — as you pan the phone, names for all 32
+    // points scroll past here, which is the point: this teaches the
+    // full compass rose through use, not just a lookup table elsewhere.
     const span = document.createElement("span");
     span.textContent = sectorName(i, count);
-    if (i === currentIdx) span.className = "current";
+    span.style.position = "absolute";
+    span.style.left = x + "px";
+    span.style.transform = "translateX(-50%)";
+    if (isCurrent) span.className = "current";
     labelsEl.appendChild(span);
-  });
+  }
 
   document.getElementById("lensHeadingText").textContent =
     Math.round(heading) + "° · " + sectorName(currentIdx, count);
