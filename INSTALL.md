@@ -1,5 +1,55 @@
 # VastuLens — Install On Your Phone, or Deploy to GitHub Pages
 
+## What changed since the previous version (full test pass)
+Ran the app's own logic through an automated test harness (44 checks:
+compass sector math, English+Dutch OCR label mapping, dimension
+parsing, PDOK coordinate parsing, bearing geometry, and the full
+room→direction→Vastu-status pipeline using the app's built-in sample
+floor plan) plus a manual code-review pass. Found and fixed two real
+bugs on top of the previous round of fixes:
+- **Removed a duplicate, dead copy of the dimension-parsing function**
+  (`parseDimensionText` was defined twice; the first copy was silently
+  unreachable dead code — harmless in practice since JS always used the
+  second, but confusing and a genuine defect to clean up).
+- **Removed a hardcoded, non-required API key on the NOAA magnetic-
+  declination lookup** used by the Dial tab's true-north correction.
+  That parameter is for NOAA's own usage-tracking survey, not
+  authentication, isn't documented as required, and every published
+  working example of that endpoint omits it — removing it eliminates a
+  needless point of failure independent of this app.
+- **Verified the Center tab's Dutch address lookup (PDOK)** against
+  both requested test addresses — Saltholm 9, 2133 EA Hoofddorp and
+  Maria Snelplantsoen 40, Amsterdam — by confirming both are real,
+  registered Dutch addresses and that the query/response parsing
+  (`parseWktPoint`, the free-text query construction) matches PDOK's
+  current, documented API shape exactly. This sandbox's own network
+  policy blocks live calls out to api.pdok.nl for me directly, so this
+  was verified by API-contract review rather than a live call from
+  here — worth actually tapping "Look up address" for both on your
+  phone to confirm the live round-trip too.
+
+## Previous round of fixes
+- **Fixed the app-wide slowness/hanging.** The compass tab was running a
+  60-times-a-second background render loop that never stopped, even while
+  you were on a different tab (e.g. running OCR on the Design tab). It now
+  only runs while the Dial or Lens screen is actually the one on screen.
+- **Fixed OCR silently missing labels like "kitchen"/"entrance."** OCR now
+  runs on a contrast-stretched version of your image (helps faint print
+  and colored/handwritten annotations alike), shows live progress instead
+  of a static message, and — this is the important part — now tells you
+  what text it *did* see but couldn't map to a room type, instead of
+  dropping it with no trace. If a label still doesn't map, tap the plan to
+  mark it yourself.
+- **Fixed the manual point-and-correct feature being unreachable.** It
+  already existed in the code, but the tappable plan view only appeared
+  after clicking "Build plan & 3D model" — which itself required manually
+  adding room boxes first. It now appears as soon as you upload a floor
+  plan photo, with no unrelated steps in the way.
+- **Added offline/installable support** via a service worker (only active
+  when hosted over HTTPS — GitHub Pages, Option B below) so a repeat visit
+  still opens and still has the compass, Brahmasthan, Matrix, and NL Rules
+  tabs working with no signal.
+
 This folder has exactly 4 files — everything the app needs, nothing
 else. It works both ways: installed straight from your phone's
 storage (no hosting), or deployed to GitHub Pages if you want the

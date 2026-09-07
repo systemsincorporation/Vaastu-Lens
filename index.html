@@ -691,7 +691,13 @@
         <p class="small" id="manualMarkHint" style="margin-top:6px;">Tap anywhere on the floor plan
         image above to mark what's there — the entrance, a toilet,
         anything — even if automatic text detection missed it or got
-        it wrong.</p>
+        it wrong. Your tap always overrides an OCR guess for that room
+        type. Direction is measured from where you tap relative to
+        this plan's own center (Brahmasthan), not typed in separately
+        — that's deliberate: a direction is only meaningful relative to
+        the center it's measured from, so keeping position as the one
+        source of truth is what keeps the reading Vastu-consistent
+        rather than letting the label and the geometry disagree.</p>
         <div id="manualMarkPrompt" style="display:none; margin-top:6px;">
           <p class="small">Point marked. What's here?</p>
           <select id="manualMarkTypeSelect" class="full"></select>
@@ -1019,27 +1025,13 @@ function mapRoomLabelToType(text){
 }
 
 /**
- * Recognizes a room-dimension label as printed on a floor plan image —
- * e.g. "3,20", "3.20m", "12,5 m²", "320cm". Returns {type:'length',
- * valueMeters} or {type:'area', valueM2}, or null if the text doesn't
- * look like a dimension at all. Deliberately narrow (a bare decimal
- * number optionally followed by a unit) so it doesn't false-positive
- * on unrelated numbers like a house number or a date printed elsewhere
- * on the plan.
+ * Note: dimension-text parsing (e.g. "3,20", "12,5 m²") lives in one
+ * place only, further down near the OCR pipeline that actually uses
+ * it (see parseDimensionText below, near findNearestDimension) — this
+ * file used to have a second, dead copy of the same function
+ * declared here, which JavaScript would have silently let the later
+ * declaration shadow anyway. Removed as duplicate/dead code.
  */
-function parseDimensionText(text){
-  if (!text) return null;
-  const match = /^(\d{1,4}(?:[.,](\d{1,2}))?)\s*(m2|m²|cm|m)?$/i.exec(text.trim());
-  if (!match) return null;
-  const hasDecimal = !!match[2];
-  const unit = (match[3] || "").toLowerCase();
-  if (!hasDecimal && !unit) return null; // bare whole number is ambiguous (could be a house number, page number, etc.)
-  let value = parseFloat(match[1].replace(",", "."));
-  if (isNaN(value) || value <= 0) return null;
-  if (unit === "cm") value = value / 100;
-  if (unit === "m2" || unit === "m²") return { type: "area", valueM2: value };
-  return { type: "length", valueMeters: value };
-}
 
 function renderCompassGlossary(){
   const container = document.getElementById("compassGlossaryTable");
@@ -1566,8 +1558,16 @@ function tryFetchDeclination(){
   if (!navigator.geolocation) return;
   navigator.geolocation.getCurrentPosition((pos) => {
     const lat = pos.coords.latitude, lon = pos.coords.longitude;
+    // NOAA's declination calculator only requires lat1/lon1 — no API
+    // key. A "key=" value was hardcoded here before; that parameter is
+    // only for NOAA's own usage-tracking survey (tied to whoever
+    // registered it, not authentication), isn't documented as
+    // required, and every working example of this endpoint omits it.
+    // Removing it eliminates a needless point of failure if that
+    // specific key ever gets deprecated or rate-limited independently
+    // of this app.
     const url = "https://www.ngdc.noaa.gov/geomag-web/calculators/calculateDeclination" +
-      "?lat1=" + lat + "&lon1=" + lon + "&key=zNEw7&resultFormat=json";
+      "?lat1=" + lat + "&lon1=" + lon + "&resultFormat=json";
     fetch(url).then(r => r.json()).then(data => {
       const val = data && data.result && data.result[0] && data.result[0].declination;
       if (typeof val === "number") {
@@ -1734,7 +1734,22 @@ function setStack(showId, hideId){
   if (!hide.classList.contains("stack-hidden")) hide.classList.add("stack-hidden");
 }
 
+/**
+ * The compass render loop is only useful while the Dial or Lens screen
+ * is actually on screen — running it in the background (e.g. while the
+ * user is on the Design tab doing OCR) was pure wasted main-thread work:
+ * a dozen+ DOM writes and a canvas redraw, 60 times a second, forever,
+ * competing with whatever else the page is doing. This is the main
+ * fix for the app feeling like it "hangs" during heavier tasks.
+ */
+function isCompassScreenActive(){
+  const dial = document.getElementById("dialScreen");
+  const lens = document.getElementById("lensScreen");
+  return (dial && dial.classList.contains("active")) || (lens && lens.classList.contains("active"));
+}
+
 function render(){
+  if (!isCompassScreenActive()) return;
   if (state.recentHeadings.length === 0) return;
 
   if (!canAnalyze()) {
@@ -3381,6 +3396,7 @@ let floorPlans = [];        // [{ label, img, transform:{rotation,flipH,flipV}, 
 let currentFloorIndex = -1;
 let floorPlanVisible = false;
 let ocrResultsByFloor = {}; // { floorIndex: [{type, dir8, x, y}] }
+let ocrUnmatchedByFloor = {}; // { floorIndex: ["raw text OCR saw but couldn't map", ...] } — surfaced so a miss is visible, not silent
 let zoneOverlayOn = false;
 let overlaySectorCount = 8;
 
@@ -3422,7 +3438,7 @@ function applyFloorPlanTransform(partial){
   // manual re-tap.
   delete ocrResultsByFloor[currentFloorIndex];
   renderOcrResults();
-  if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+  if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
   runOcrOnCurrentFloor();
 }
 
@@ -3445,7 +3461,7 @@ document.getElementById("overlaySectorSeg").addEventListener("click", (e) => {
   document.querySelectorAll("#overlaySectorSeg button").forEach(b => b.classList.remove("active"));
   e.target.classList.add("active");
   overlaySectorCount = parseInt(e.target.dataset.count, 10);
-  if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+  if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
 });
 
 function renderFloorPlanTabs(){
@@ -3464,7 +3480,7 @@ function renderFloorPlanTabs(){
       document.getElementById("floorPlanToggleBtn").textContent = "Show behind plan: On";
       renderFloorPlanTabs();
       renderOcrResults();
-      if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+      if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
     });
     container.appendChild(btn);
   });
@@ -3487,8 +3503,14 @@ document.getElementById("floorPlanUpload").addEventListener("change", (e) => {
         if (loaded === files.length) {
           floorPlanVisible = true;
           document.getElementById("floorPlanToggleBtn").textContent = "Show behind plan: On";
+          // Reveal the tappable plan canvas the moment an image is
+          // uploaded — this used to be gated behind "Build plan & 3D
+          // model" (which itself required manually adding rooms first),
+          // so anyone who just wanted to point-and-correct a label on
+          // their photo had no way to reach it at all.
+          document.getElementById("plan2dCard").style.display = "block";
           renderFloorPlanTabs();
-          if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+          if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
           // Auto-run text recognition on upload — no manual button
           // press required. The button still exists to re-scan (e.g.
           // after a flip/rotate).
@@ -3505,7 +3527,7 @@ document.getElementById("floorPlanToggleBtn").addEventListener("click", () => {
   if (currentFloorIndex < 0) return;
   floorPlanVisible = !floorPlanVisible;
   document.getElementById("floorPlanToggleBtn").textContent = "Show behind plan: " + (floorPlanVisible ? "On" : "Off");
-  if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+  if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
 });
 
 document.getElementById("floorPlanClearBtn").addEventListener("click", () => {
@@ -3518,11 +3540,44 @@ document.getElementById("floorPlanClearBtn").addEventListener("click", () => {
   document.getElementById("floorPlanToggleBtn").textContent = "Show behind plan: Off";
   renderFloorPlanTabs();
   renderOcrResults();
-  if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+  if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
 });
 
 /* ---------- OCR: read room labels directly off the floor plan image ---------- */
 let tesseractLoading = false;
+
+/**
+ * Grayscale + linear contrast stretch, done on-device with plain canvas
+ * pixel math (no extra library). Finds the darkest/lightest luminance
+ * actually present in the image and stretches that range to full
+ * black–white, which is a standard, safe OCR-preprocessing step: it
+ * never invents detail, it just uses the contrast range that's already
+ * there more fully — helping both faint printed labels and colored
+ * handwritten annotations stand out clearly for recognition.
+ */
+function preprocessForOcr(sourceCanvas){
+  const c = document.createElement("canvas");
+  c.width = sourceCanvas.width;
+  c.height = sourceCanvas.height;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(sourceCanvas, 0, 0);
+  const imgData = ctx.getImageData(0, 0, c.width, c.height);
+  const d = imgData.data;
+  let min = 255, max = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const g = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+    if (g < min) min = g;
+    if (g > max) max = g;
+  }
+  const range = Math.max(max - min, 1);
+  for (let i = 0; i < d.length; i += 4) {
+    const g = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+    const stretched = Math.max(0, Math.min(255, ((g - min) / range) * 255));
+    d[i] = d[i+1] = d[i+2] = stretched;
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return c;
+}
 
 function loadTesseract(){
   return new Promise((resolve, reject) => {
@@ -3536,8 +3591,13 @@ function renderOcrResults(){
   const listEl = document.getElementById("ocrRoomsList");
   const results = ocrResultsByFloor[currentFloorIndex];
   if (!results) { listEl.innerHTML = ""; return; }
+  const unmatched = ocrUnmatchedByFloor[currentFloorIndex];
+  const unmatchedHtml = (unmatched && unmatched.length > 0) ?
+    '<p class="small" style="margin-top:8px;">Text the scan saw but couldn\'t match to a known room type: ' +
+    unmatched.map(t => '&quot;' + t.replace(/</g,"&lt;") + '&quot;').join(", ") +
+    '. If one of these is actually a room (e.g. handwriting, another language, or a low-confidence read), tap the plan above to mark it manually — a manual mark always overrides an OCR guess.</p>' : "";
   if (results.length === 0) {
-    listEl.innerHTML = '<p class="small">No recognizable room labels found yet — tap directly on the plan above to mark rooms manually, entrance included.</p>';
+    listEl.innerHTML = '<p class="small">No recognizable room labels found yet — tap directly on the plan above to mark rooms manually, entrance included.</p>' + unmatchedHtml;
     return;
   }
   let html = "";
@@ -3565,7 +3625,7 @@ function renderOcrResults(){
         '</div>';
     }
   });
-  listEl.innerHTML = html;
+  listEl.innerHTML = html + unmatchedHtml;
 }
 
 /**
@@ -3612,14 +3672,30 @@ async function runOcrOnCurrentFloor(){
     octx.imageSmoothingQuality = "high";
     octx.drawImage(sourceCanvas, 0, 0, ocrCanvas.width, ocrCanvas.height);
   }
+  // Grayscale + linear contrast stretch before OCR. Floor-plan photos
+  // and screenshots are frequently low-contrast (phone photo of a
+  // screen, faint printer toner, pale colored fills), and hand-added
+  // annotations are often a single saturated color (e.g. red pen/
+  // arrows) rather than the plain black text Tesseract is tuned for —
+  // stretching the full image to use the whole 0–255 range makes both
+  // cases noticeably more legible to the OCR engine at negligible cost.
+  ocrCanvas = preprocessForOcr(ocrCanvas);
 
   try {
-    const result = await Tesseract.recognize(ocrCanvas, "eng");
+    const result = await Tesseract.recognize(ocrCanvas, "eng", {
+      logger: (m) => {
+        if (m.status === "recognizing text" && typeof m.progress === "number") {
+          statusEl.textContent = "Reading text on this floor's image… " + Math.round(m.progress * 100) + "%";
+        } else if (m.status) {
+          statusEl.textContent = m.status.charAt(0).toUpperCase() + m.status.slice(1) + "…";
+        }
+      }
+    });
     // Coordinates are in the (possibly upscaled) OCR canvas — divide
     // back down by scaleFactor so positions match the effectiveCanvas
     // (and therefore the displayed image) exactly.
     const words = (result.data.words || [])
-      .filter(w => w.confidence > 50 && w.text.trim().length > 1)
+      .filter(w => w.confidence > 35 && w.text.trim().length > 1)
       .map(w => ({
         text: w.text,
         x: ((w.bbox.x0 + w.bbox.x1) / 2) / scaleFactor,
@@ -3661,6 +3737,24 @@ async function runOcrOnCurrentFloor(){
       if (existingManual.some(m => m.type === f.type)) f.superseded = true;
     });
     ocrResultsByFloor[currentFloorIndex] = found.concat(existingManual);
+
+    // Surface whatever OCR saw but couldn't map to a known room type,
+    // instead of silently dropping it — a missed "kitchen"/"entrance"
+    // should be visible and correctable, not just absent.
+    const seenUnmatched = new Set();
+    const unmatchedTexts = [];
+    words.forEach(w => {
+      const clean = w.text.trim();
+      if (clean.length < 3) return;
+      if (mapRoomLabelToType(clean)) return;
+      if (parseDimensionText(clean)) return;
+      const key = clean.toLowerCase();
+      if (seenUnmatched.has(key)) return;
+      seenUnmatched.add(key);
+      unmatchedTexts.push(clean);
+    });
+    ocrUnmatchedByFloor[currentFloorIndex] = unmatchedTexts.slice(0, 12);
+
     statusEl.textContent = found.length > 0 ?
       "Found " + found.length + " recognizable room label" + (found.length === 1 ? "" : "s") + ". Direction is measured from this image's own midpoint, as an approximation — the Center tab's plot-based Brahmasthan is more accurate if you have it." :
       "OCR ran, but found no text it could match to a known room type.";
@@ -3739,7 +3833,7 @@ document.getElementById("manualMarkConfirmBtn").addEventListener("click", () => 
   pendingManualPoint = null;
   document.getElementById("manualMarkPrompt").style.display = "none";
   renderOcrResults();
-  if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+  if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
 });
 
 /**
@@ -3784,7 +3878,7 @@ populateZoneOverlaySelect();
 document.getElementById("zoneOverlayToggleBtn").addEventListener("click", () => {
   zoneOverlayOn = !zoneOverlayOn;
   document.getElementById("zoneOverlayToggleBtn").textContent = "Show overlay: " + (zoneOverlayOn ? "On" : "Off");
-  if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+  if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
 });
 
 function drawZoneOverlay(ctx, cx, cy, radius, elementKey, sectorCount){
@@ -4496,6 +4590,51 @@ document.getElementById("aiToggleBtn").addEventListener("click", async () => {
     document.getElementById("detectionBanner").style.display = "none";
   }
 });
+
+/**
+ * Offline/installable support. Service workers only register in a
+ * secure context (https, or localhost) — never on a plain local
+ * file:// page, which is what makes "Option A" (installing straight
+ * from phone storage) work at all today without one. So this only
+ * activates when the app is actually hosted (e.g. GitHub Pages),
+ * which is also exactly when it's worth it. Registered from an inline
+ * Blob rather than a separate sw.js file, to keep the project at
+ * exactly the 4 files described in INSTALL.md. Caches this page's own
+ * shell plus, opportunistically, the Three.js/Tesseract.js/TensorFlow
+ * CDN scripts the first time each is used, so a second visit — even
+ * with no signal — still opens and still has the compass, Brahmasthan,
+ * Matrix, and NL Rules tabs working, and Design/Lens work too if their
+ * library was already cached from a prior online visit.
+ */
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  const swSource = `
+    const CACHE = "vastulens-v1";
+    self.addEventListener("install", (e) => { self.skipWaiting(); });
+    self.addEventListener("activate", (e) => { self.clients.claim(); });
+    self.addEventListener("fetch", (e) => {
+      if (e.request.method !== "GET") return;
+      e.respondWith(
+        caches.match(e.request).then((cached) => {
+          const fetchPromise = fetch(e.request).then((networkResponse) => {
+            if (networkResponse && networkResponse.ok) {
+              caches.open(CACHE).then((cache) => cache.put(e.request, networkResponse.clone()));
+            }
+            return networkResponse;
+          }).catch(() => cached);
+          return cached || fetchPromise;
+        })
+      );
+    });
+  `;
+  const swBlobUrl = URL.createObjectURL(new Blob([swSource], { type: "application/javascript" }));
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register(swBlobUrl).catch(() => {
+      // Hosting without HTTPS, or some other environment restriction —
+      // the app still works fully online, it just won't cache for
+      // offline use. Not worth surfacing to the user as an error.
+    });
+  });
+}
 </script>
 
 </body>
