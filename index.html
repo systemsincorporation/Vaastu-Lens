@@ -232,6 +232,17 @@
   .structural-details summary { cursor: pointer; font-weight: 700; color: #a02020; }
   .structural-details p, .structural-details li { color: var(--text-dim); }
   .structural-details ul { margin-top: 4px; }
+
+  .feedback-strip {
+    margin-top: 10px; padding: 10px; background: var(--glass);
+    border: 1px solid var(--glass-border); border-radius: 12px;
+  }
+  .feedback-strip button { font-size: 12px; padding: 8px; }
+  .feedback-followup {
+    margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--glass-border);
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .feedback-followup button { text-align: left; font-size: 12px; }
   a.official-link {
     display: block; text-align: center; background: var(--glass); border: 1px solid var(--glass-border);
     color: var(--accent); padding: 10px; border-radius: 10px; font-size: 13px; font-weight: 600; margin-top: 6px;
@@ -290,8 +301,9 @@
           <div class="center-text small" id="qualityLine" style="margin-top:6px;">
             Stability: good · ±5° (reading-stability heuristic, not a hardware sensor report)
           </div>
-          <button id="saveEntranceBtn" class="ghost" style="margin-top:10px;">Save this as my entrance direction</button>
-          <p class="small" id="saveEntranceStatus" style="text-align:center; margin-top:4px;"></p>
+          <select id="dialSaveDirectionSelect" class="full" style="margin-top:10px;"></select>
+          <button id="dialSaveDirectionBtn" class="ghost">Save this direction</button>
+          <p class="small" id="dialSaveDirectionStatus" style="text-align:center; margin-top:4px;"></p>
         </div>
       </div>
 
@@ -480,6 +492,9 @@
         Turn on the camera above to see what you're pointing at while
         you check.</p>
         <p class="small" id="matrixHeadingLine">—</p>
+        <select id="matrixSaveDirectionSelect" class="full" style="margin-top:8px;"></select>
+        <button id="matrixSaveDirectionBtn" class="ghost">Save this direction</button>
+        <p class="small" id="matrixSaveDirectionStatus" style="margin-top:4px;"></p>
       </div>
 
       <div class="card" id="matrixSavedHomeCard" style="display:none;">
@@ -495,6 +510,7 @@
       <p class="small" style="margin: 4px 4px 2px;"><strong>Live check</strong> — point and check any spot right now:</p>
       <div id="matrixButtons"></div>
       <div id="matrixResult"></div>
+      <div id="matrixFeedback"></div>
       <div class="card">
         <p>Placements reflect principles commonly cited across popular
         Vastu literature, evaluated at the 8-direction level. Not a
@@ -531,6 +547,37 @@
         <div class="row">
           <input type="number" id="fundaPlotArea" placeholder="Plot area m²">
           <input type="text" id="fundaYear" placeholder="Build year">
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Paste listing text (optional)</h2>
+        <p>This isn't automated extraction from any website — that's
+        exactly the scraping most listing sites' terms of use prohibit,
+        and browsers block cross-site fetches like that anyway,
+        regardless of the site. Instead: copy the description text
+        yourself from any listing (Funda or otherwise) and paste it
+        below — this only reads text you've already legitimately
+        copied, and only looks for orientation words to suggest a
+        starting heading for the Dial tab.</p>
+        <textarea id="listingPasteText" rows="4" style="width:100%; background:rgba(26,26,46,0.05); border:1px solid var(--glass-border); border-radius:10px; padding:9px; font-size:13px; font-family:inherit;" placeholder="Paste the listing description here (Dutch or English)..."></textarea>
+        <button class="ghost" id="parseListingBtn" style="margin-top:8px;">Find orientation mentions</button>
+        <p class="small" id="listingParseResult" style="margin-top:6px;"></p>
+      </div>
+
+      <div class="card">
+        <h2>Upload your floor plan (optional visual reference)</h2>
+        <p>Upload a photo or screenshot of your actual floor plan to
+        trace your room layout against below — a plain image only
+        (JPG/PNG/screenshot), not a PDF; screenshot the PDF page first
+        if that's what you have. This is a visual reference only: there
+        is no automatic room detection from the image, and no AI
+        vision model tries to read it — you still enter each room's
+        position and size yourself in the list below.</p>
+        <input type="file" accept="image/*" id="floorPlanUpload">
+        <div class="row" style="margin-top:8px;">
+          <button class="ghost" id="floorPlanToggleBtn">Show behind plan: Off</button>
+          <button class="ghost" id="floorPlanClearBtn">Remove</button>
         </div>
       </div>
 
@@ -766,6 +813,57 @@ const FULL_NAMES_32 = [
 
 function fullNameFor32(index){
   return FULL_NAMES_32[index];
+}
+
+/**
+ * Scans user-pasted text (e.g. copied from a listing page — never
+ * fetched by this app) for direction-word mentions, Dutch and English.
+ * Intercardinal words (noordoost/northeast etc.) are matched and
+ * stripped from the text FIRST, so the cardinal patterns (noord/north
+ * etc.) don't also false-positive-match inside those compound words.
+ * Returns [{direction8, matchedText}], deduplicated by (direction, word).
+ * This is a simple keyword scan, not real extraction or NLP — it's
+ * presented to the user as exactly that.
+ */
+function parseOrientationMentions(text){
+  if (!text) return [];
+  const found = [];
+  let remaining = text;
+
+  const interPatterns = [
+    { dir: "NE", re: /\b(noordoost\w*|northeast\w*)\b/gi },
+    { dir: "SE", re: /\b(zuidoost\w*|southeast\w*)\b/gi },
+    { dir: "SW", re: /\b(zuidwest\w*|southwest\w*)\b/gi },
+    { dir: "NW", re: /\b(noordwest\w*|northwest\w*)\b/gi },
+  ];
+  const cardinalPatterns = [
+    { dir: "N", re: /\b(noord\w*|north\w*)\b/gi },
+    { dir: "S", re: /\b(zuid\w*|south\w*)\b/gi },
+    { dir: "E", re: /\b(oost\w*|east\w*)\b/gi },
+    { dir: "W", re: /\b(west\w*)\b/gi },
+  ];
+
+  interPatterns.forEach(p => {
+    const matches = remaining.match(p.re);
+    if (matches) {
+      matches.forEach(m => found.push({ direction8: p.dir, matchedText: m }));
+      remaining = remaining.replace(p.re, "");
+    }
+  });
+  cardinalPatterns.forEach(p => {
+    const matches = remaining.match(p.re);
+    if (matches) {
+      matches.forEach(m => found.push({ direction8: p.dir, matchedText: m }));
+    }
+  });
+
+  const seen = new Set();
+  return found.filter(f => {
+    const key = f.direction8 + ":" + f.matchedText.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function renderCompassGlossary(){
@@ -1060,18 +1158,35 @@ document.getElementById("dialCameraToggleBtn").addEventListener("click", () => {
   syncCamera();
 });
 
-document.getElementById("saveEntranceBtn").addEventListener("click", () => {
-  if (!canAnalyze()) {
-    document.getElementById("saveEntranceStatus").textContent =
-      "Sensor accuracy too low right now — recalibrate before saving.";
-    return;
-  }
-  const heading = currentHeading();
-  updateHomeProfile({ entranceBearing: heading });
-  document.getElementById("saveEntranceStatus").textContent =
-    "Saved: " + Math.round(heading) + "° (" + sectorName(sectorIndex(heading, 32), 32) + ")";
-  renderSavedHomeCard();
-});
+// Generic wiring for a "save this direction for area X" control — used
+// on the Dial and Matrix tabs (the Lens tab uses its own richer
+// tag-panel UI, wired separately, but saves through the same
+// saveAreaDirection() function underneath). Actually invoked further
+// down, once HOME_ELEMENTS has been declared.
+function wireSaveDirectionControl(selectId, btnId, statusId, onSaved){
+  const select = document.getElementById(selectId);
+  select.innerHTML = "";
+  HOME_ELEMENTS.forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t.key;
+    opt.textContent = t.label;
+    select.appendChild(opt);
+  });
+
+  document.getElementById(btnId).addEventListener("click", () => {
+    const statusEl = document.getElementById(statusId);
+    if (!canAnalyze()) {
+      statusEl.textContent = "Sensor accuracy too low right now — recalibrate before saving.";
+      return;
+    }
+    const areaTypeKey = select.value;
+    const heading = currentHeading();
+    saveAreaDirection(areaTypeKey, heading);
+    statusEl.textContent = "Saved " + roomLabel(areaTypeKey) + ": " +
+      Math.round(heading) + "° (" + sectorName(sectorIndex(heading, 32), 32) + ")";
+    if (onSaved) onSaved();
+  });
+}
 
 document.getElementById("matrixCameraToggleBtn").addEventListener("click", () => {
   matrixCameraOn = !matrixCameraOn;
@@ -1089,6 +1204,7 @@ document.querySelectorAll("header nav button").forEach(btn => {
     document.getElementById(btn.dataset.tab + "Screen").classList.add("active");
     syncCamera();
     if (btn.dataset.tab === "matrix" && typeof renderMatrixSavedHome === "function") renderMatrixSavedHome();
+    if (btn.dataset.tab === "brahmasthan" && typeof renderSavedHomeCard === "function") renderSavedHomeCard();
   });
 });
 
@@ -1587,10 +1703,31 @@ function defaultHomeProfile(){
     label: "",
     brahmasthan: null,       // {x, y} meters, from the Center tab
     brahmasthanArea: null,   // m^2, for reference
-    entranceBearing: null,   // degrees, saved from a live Dial reading
-    rooms: [],               // [{type, x, y, w, d, dir8, dir32}]
+    entranceBearing: null,   // degrees — kept for backward compatibility; ENTRANCE is also saveable via areaDirections now
+    rooms: [],               // [{type, x, y, w, d, dir8, dir32, bearing}], from the Design tab (has full geometry)
+    areaDirections: {},      // { [areaTypeKey]: {bearing, dir8, dir32, savedAt} } — simple bearing-only saves from any tab (Dial/Lens/Matrix), no geometry needed
     savedAt: null
   };
+}
+
+// Generic save usable from any tab that has a live heading — Dial,
+// Lens, and Matrix all call this. Overwrites any previous save for the
+// same area type; every other saved area type and all room/Brahmasthan
+// data is left untouched (updateHomeProfile always merges).
+function saveAreaDirection(areaTypeKey, bearing){
+  const profile = loadHomeProfile() || defaultHomeProfile();
+  const areaDirections = Object.assign({}, profile.areaDirections);
+  areaDirections[areaTypeKey] = {
+    bearing: bearing,
+    dir8: sectorName(sectorIndex(bearing, 8), 8),
+    dir32: sectorName(sectorIndex(bearing, 32), 32),
+    savedAt: Date.now()
+  };
+  const update = { areaDirections: areaDirections };
+  // Keep the legacy entranceBearing field in sync for anything still
+  // reading it directly (e.g. older saved-home summaries).
+  if (areaTypeKey === "ENTRANCE") update.entranceBearing = bearing;
+  return updateHomeProfile(update);
 }
 
 function loadHomeProfile(){
@@ -1636,7 +1773,8 @@ function updateHomeProfile(partial){
 
 function hasHomeProfile(){
   const p = loadHomeProfile();
-  return !!(p && (p.brahmasthan || p.entranceBearing || (p.rooms && p.rooms.length)));
+  return !!(p && (p.brahmasthan || p.entranceBearing || (p.rooms && p.rooms.length) ||
+    (p.areaDirections && Object.keys(p.areaDirections).length)));
 }
 
 let lastBrahmaResult = null;
@@ -1825,9 +1963,19 @@ function renderSavedHomeCard(){
   html += "<p>Brahmasthan: " + (profile.brahmasthan ?
     profile.brahmasthan.x.toFixed(2) + "m, " + profile.brahmasthan.y.toFixed(2) + "m from reference corner" :
     "not saved yet — calculate one above") + "</p>";
-  html += "<p>Entrance direction: " + (profile.entranceBearing != null ?
-    Math.round(profile.entranceBearing) + "° (" + sectorName(sectorIndex(profile.entranceBearing, 32), 32) + ") — save this from the Dial tab" :
-    "not saved yet — save a live reading from the Dial tab") + "</p>";
+
+  const areaKeys = profile.areaDirections ? Object.keys(profile.areaDirections) : [];
+  if (areaKeys.length > 0) {
+    html += "<p><strong>Saved directions:</strong></p><ul style=\"margin:0 0 0 18px; padding:0;\">";
+    areaKeys.forEach(key => {
+      const entry = profile.areaDirections[key];
+      html += "<li>" + roomLabel(key) + " — " + Math.round(entry.bearing) + "° (" + entry.dir32 + ")</li>";
+    });
+    html += "</ul>";
+  } else {
+    html += "<p>No directions saved yet — save any area (entrance, kitchen, bedroom, etc.) from the Dial, Lens, or Matrix tab.</p>";
+  }
+
   html += "<p>Rooms saved: " + (profile.rooms ? profile.rooms.length : 0) +
     " — save these from the Design tab, see the full breakdown on the Matrix tab.</p>";
   body.innerHTML = html;
@@ -1857,10 +2005,17 @@ renderSavedHomeCard();
 const HOME_ELEMENTS = [
   { key: "ENTRANCE", label: "Main entrance" },
   { key: "KITCHEN", label: "Kitchen" },
-  { key: "PRIMARY_BEDROOM", label: "Primary bedroom" },
+  { key: "PRIMARY_BEDROOM", label: "Bedroom 1 (primary)" },
+  { key: "BEDROOM_2", label: "Bedroom 2 (additional)" },
   { key: "TOILET", label: "Toilet / bathroom" },
   { key: "LIVING_ROOM", label: "Living room" },
+  { key: "POOJA_ROOM", label: "Pooja / prayer room" },
+  { key: "STAIRS", label: "Stairs" },
+  { key: "WASHING_AREA", label: "Washing / utility area" },
+  { key: "GARDEN", label: "Garden" },
+  { key: "BACKYARD", label: "Backyard" },
   { key: "WATER_TANK", label: "Overhead water tank / water storage" },
+  { key: "HEAT_PUMP_AREA", label: "Heat pump area" },
 ];
 
 const MATRIX_RULES = {
@@ -1999,6 +2154,119 @@ const MATRIX_RULES = {
         "Painting or cladding the tank in light colors is a commonly cited partial mitigation."
       ]
     }
+  },
+  BEDROOM_2: {
+    ideal: ["W"],
+    forbidden: ["NE","SE"],
+    remedies: {
+      N: ["Commonly treated as acceptable for a secondary bedroom without further mitigation."],
+      NW: ["Often specifically cited as suited to a guest bedroom; workable without further mitigation."],
+      S: ["Keep the bed headboard against the south wall.", "Commonly treated as acceptable in many sources."],
+      NE: [
+        "Keep this room especially uncluttered; a northeast yantra placed in the zone is a symbolic remedy cited in some sources.",
+        "Consider using this room for storage or study rather than regular sleeping if another room is available."
+      ],
+      SE: [
+        "Soft, cooling colors (blues, greens) are a commonly cited mitigation for a southeast bedroom.",
+        "Keep electrical/heat appliances out of this room."
+      ]
+    }
+  },
+  POOJA_ROOM: {
+    ideal: ["NE"],
+    forbidden: ["SW","S"],
+    remedies: {
+      N: ["Acceptable secondary placement in many sources without further mitigation."],
+      E: ["Acceptable secondary placement in many sources without further mitigation."],
+      SW: [
+        "Keep this space especially clean, well-lit, and simply furnished to partially offset the placement.",
+        "Relocating a shrine/altar corner elsewhere, even within the same room, toward NE is a commonly cited partial mitigation."
+      ],
+      S: [
+        "Keep the space well-lit and uncluttered.",
+        "Face the idols/images toward the east or north while praying, regardless of the room's own zone."
+      ]
+    }
+  },
+  STAIRS: {
+    ideal: ["S","W","SW"],
+    forbidden: ["NE"],
+    remedies: {
+      N: ["Keep this run as light and open as possible (avoid heavy enclosed storage underneath)."],
+      E: ["Keep this run as light and open as possible (avoid heavy enclosed storage underneath)."],
+      SE: ["Considered workable by many sources without further mitigation."],
+      NW: ["Considered workable by many sources without further mitigation."],
+      NE: [
+        "Keep the area under and around the stairs completely open — no storage, no pooja room, no kitchen at either end, which is consistently flagged regardless of the stair's exact zone.",
+        "Ensure the flight doesn't directly face the main entrance; add a plant or light screen to break the sightline if it does."
+      ]
+    }
+  },
+  WASHING_AREA: {
+    ideal: ["N","E"],
+    forbidden: ["NE"],
+    remedies: {
+      NW: [
+        "Some sources favor this zone instead, reasoning from the northwest's air element (motion/circulation) rather than water — there's genuine disagreement between water-based and air-based reasoning for this appliance; neither is settled as definitively correct."
+      ],
+      SE: [
+        "Some sources treat this zone as suitable too, reasoning from fire/motion association (heat-generating, churning appliances) rather than water — again, a genuine split between sources on which element should govern this appliance."
+      ],
+      W: [
+        "Commonly cited as a workable secondary zone without further mitigation."
+      ],
+      SW: [
+        "This zone is traditionally meant to carry stability and heavier fixed placement, not repeated water movement/discharge — keep the unit's footprint small if placed here.",
+        "Relocating to N or E, where feasible, aligns better with the water-favorable reasoning for this appliance."
+      ],
+      NE: [
+        "Keep this area especially clean, dry, and uncluttered to partially offset the placement — the northeast is treated as reserved for the home's most sacred/light use across every category in this app, which overrides general water-element reasoning here.",
+        "Relocating to N or E, where feasible, aligns with the water-favorable reasoning for this appliance without placing it in the reserved northeast corner."
+      ]
+    }
+  },
+  GARDEN: {
+    ideal: ["N","E","NE"],
+    forbidden: ["SW"],
+    remedies: {
+      S: ["Heavier plantings (trees, tall shrubs) are commonly recommended here rather than in the north/east."],
+      W: ["Heavier plantings are commonly recommended here rather than in the north/east."],
+      SE: ["Avoid a water feature directly in this zone; fire/water together here is a commonly cited conflict."],
+      SW: [
+        "Keep any southwest greenery low and light rather than a full open garden — this zone is traditionally meant to carry the heaviest mass of the plot, not open space.",
+        "A rock garden or lower-maintenance planting is a commonly cited partial mitigation versus a full lawn/garden here."
+      ]
+    }
+  },
+  BACKYARD: {
+    ideal: ["N","E","NE"],
+    forbidden: ["SW"],
+    remedies: {
+      S: ["Heavier structures (a shed, tall trees) are commonly recommended here rather than in the north/east."],
+      W: ["Heavier structures are commonly recommended here rather than in the north/east."],
+      SE: ["Keep this zone tidy if it's near the kitchen's exhaust/fire-adjacent side of the house."],
+      SW: [
+        "Keep this zone the most built-up/heaviest part of the backyard (a shed, storage, or a raised deck) rather than fully open space.",
+        "A rock garden or lower-maintenance area is a commonly cited partial mitigation versus a full open lawn here."
+      ]
+    }
+  },
+  HEAT_PUMP_AREA: {
+    ideal: ["NE"],
+    forbidden: ["SE"],
+    lowConfidence: true,
+    remedies: {
+      N: ["Acceptable secondary placement, consistent with treating this as a water-element device."],
+      W: ["Considered a workable secondary position in modern sources discussing similar outdoor electrical/climate equipment."],
+      NW: [
+        "Some reasoning would instead favor this zone via the northwest's air element, since the outdoor unit's function is drawing in outside air — there's a genuine interpretive split on which element should govern this specific device, air (its energy source) or water (its output, since a Dutch heat pump is predominantly an air-to-water system heating the home's water-based central heating and hot water)."
+      ],
+      SE: [
+        "Keep the unit's footprint and any enclosure as small/unobtrusive as possible in this zone.",
+        "Screening it from view (planting, a light lattice) is a commonly suggested partial mitigation for outdoor equipment in a difficult zone.",
+        "Relocating toward NE, where feasible, aligns with treating this as a water-element device rather than a fire/electrical one — it ultimately heats the home's water-based central heating system, even though the outdoor unit's energy source is ambient air."
+      ]
+    }
   }
 };
 
@@ -2025,11 +2293,13 @@ function evaluateMatrix(elementKey, direction8){
   const rule = MATRIX_RULES[elementKey];
   const label = HOME_ELEMENTS.find(e => e.key === elementKey).label;
   const remediesForDirection = (rule.remedies && rule.remedies[direction8]) || [];
+  const lowConfidenceNote = rule.lowConfidence ?
+    " This category (unlike most of this app) has no basis in classical Vastu texts at all — it's a modern extrapolation from general elemental associations, cited with far less consistency across sources than 8-direction room placement." : "";
 
   if (rule.ideal.includes(direction8)) {
     return {
       status: "IDEAL",
-      explanation: direction8 + " is commonly cited as the ideal placement for the " + label.toLowerCase() + ".",
+      explanation: direction8 + " is commonly cited as the ideal placement for the " + label.toLowerCase() + "." + lowConfidenceNote,
       remedies: [],
       structuralOption: null
     };
@@ -2037,7 +2307,7 @@ function evaluateMatrix(elementKey, direction8){
   if (rule.forbidden.includes(direction8)) {
     return {
       status: "FORBIDDEN",
-      explanation: direction8 + " is commonly flagged as a placement to avoid for the " + label.toLowerCase() + ".",
+      explanation: direction8 + " is commonly flagged as a placement to avoid for the " + label.toLowerCase() + "." + lowConfidenceNote,
       remedies: remediesForDirection.length ? remediesForDirection :
         ["Keep this zone especially clean and uncluttered as a baseline, even without a specific symbolic remedy on file for this exact direction."],
       structuralOption: {
@@ -2049,7 +2319,7 @@ function evaluateMatrix(elementKey, direction8){
   return {
     status: "PERMISSIBLE_WITH_REMEDY",
     explanation: direction8 + " is not ideal for the " + label.toLowerCase() +
-      (remediesForDirection.length ? ", but is commonly treated as workable with mitigation." : "; treat as neutral."),
+      (remediesForDirection.length ? ", but is commonly treated as workable with mitigation." : "; treat as neutral.") + lowConfidenceNote,
     remedies: remediesForDirection,
     structuralOption: null
   };
@@ -2093,12 +2363,25 @@ function renderMatrixSavedHome(){
     html += "<p><strong>" + profile.label + "</strong></p>";
   }
 
-  if (profile.entranceBearing != null) {
-    html += "<div class=\"room-compliance-row\"><span>Main entrance — " +
-      sectorName(sectorIndex(profile.entranceBearing, 32), 32) + " (" +
-      Math.round(profile.entranceBearing) + "°)</span></div>";
+  const areaKeys = profile.areaDirections ? Object.keys(profile.areaDirections) : [];
+  if (areaKeys.length > 0) {
+    areaKeys.forEach(key => {
+      const entry = profile.areaDirections[key];
+      const result = evaluateMatrix(key, entry.dir8);
+      const badgeCls = result.status === "IDEAL" ? "badge-ideal" : (result.status === "FORBIDDEN" ? "badge-forbidden" : "badge-remedy");
+      const badgeLabel = result.status === "IDEAL" ? "Ideal" : (result.status === "FORBIDDEN" ? "Forbidden" : "Remedy");
+      const row = document.createElement("div");
+      row.className = "room-compliance-row";
+      row.style.flexWrap = "wrap";
+      row.innerHTML =
+        '<span>' + roomLabel(key) + ' — ' + entry.dir32 + ' (' + Math.round(entry.bearing) + '°)</span>' +
+        '<span class="badge ' + badgeCls + '">' + badgeLabel + '</span>' +
+        ((result.remedies.length || result.structuralOption) ?
+          '<div style="width:100%; margin-top:4px;">' + formatRemediesHtml(result.remedies) + formatStructuralOptionHtml(result.structuralOption) + '</div>' : '');
+      html += row.outerHTML;
+    });
   } else {
-    html += "<p class=\"small\">Entrance direction not saved yet — save a live reading from the Dial tab.</p>";
+    html += "<p class=\"small\">No directions saved yet — save any area (entrance, kitchen, bedroom, etc.) from the Dial, Lens, or this tab's own save control above.</p>";
   }
 
   if (profile.rooms && profile.rooms.length > 0) {
@@ -2124,6 +2407,9 @@ function renderMatrixSavedHome(){
 
 renderMatrixSavedHome();
 
+wireSaveDirectionControl("dialSaveDirectionSelect", "dialSaveDirectionBtn", "dialSaveDirectionStatus", renderSavedHomeCard);
+wireSaveDirectionControl("matrixSaveDirectionSelect", "matrixSaveDirectionBtn", "matrixSaveDirectionStatus", renderMatrixSavedHome);
+
 const matrixButtonsEl = document.getElementById("matrixButtons");
 HOME_ELEMENTS.forEach(el => {
   const btn = document.createElement("button");
@@ -2147,9 +2433,68 @@ HOME_ELEMENTS.forEach(el => {
       formatRemediesHtml(r.remedies) +
       formatStructuralOptionHtml(r.structuralOption) +
       '</div>';
+    renderFeedbackStrip(el.key, r);
   });
   matrixButtonsEl.appendChild(btn);
 });
+
+/**
+ * A structured quick-option menu, not a live AI chat — deliberately
+ * labeled as such. Lets the user say whether a result matched what
+ * they expected and, if not, jump straight to the most likely next
+ * step (remedies, manual override, recalibration) instead of leaving
+ * them stuck with just a verdict.
+ */
+function renderFeedbackStrip(elementKey, result){
+  const container = document.getElementById("matrixFeedback");
+  container.innerHTML =
+    '<div class="feedback-strip">' +
+    '<p class="small" style="margin-bottom:6px;">Is this what you expected?</p>' +
+    '<div class="row">' +
+    '<button class="ghost" id="fbYesBtn">Yes, that\'s right</button>' +
+    '<button class="ghost" id="fbNoBtn">Not what I expected</button>' +
+    '</div>' +
+    '<div id="feedbackFollowup" style="display:none;" class="feedback-followup"></div>' +
+    '</div>';
+
+  document.getElementById("fbYesBtn").addEventListener("click", () => {
+    document.getElementById("feedbackFollowup").style.display = "none";
+    document.getElementById("fbYesBtn").textContent = "Noted, thanks";
+  });
+
+  document.getElementById("fbNoBtn").addEventListener("click", () => {
+    const followup = document.getElementById("feedbackFollowup");
+    followup.style.display = "flex";
+    followup.innerHTML =
+      '<p class="small">A few quick options (this is a simple menu, not a live AI chat):</p>' +
+      '<button class="ghost" id="fbShowRemedies">Show remedies/alternatives again</button>' +
+      '<button class="ghost" id="fbManualOverride">Enter this area\'s direction manually instead</button>' +
+      '<button class="ghost" id="fbRecalibrate">I think my reading is wrong — how to recalibrate</button>';
+
+    document.getElementById("fbShowRemedies").addEventListener("click", () => {
+      const details = document.querySelector("#matrixResult details.structural-details");
+      if (details) {
+        details.open = true;
+        details.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else {
+        document.getElementById("matrixResult").scrollIntoView({ behavior: "smooth" });
+      }
+    });
+
+    document.getElementById("fbManualOverride").addEventListener("click", () => {
+      const select = document.getElementById("matrixSaveDirectionSelect");
+      select.value = elementKey;
+      select.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+
+    document.getElementById("fbRecalibrate").addEventListener("click", () => {
+      followup.innerHTML =
+        '<p class="small">Move away from metal, electronics, and appliances, then wave ' +
+        'the phone in a slow figure-eight for a few seconds. Check the Dial tab\'s ' +
+        'stability line reads "good" before checking again here.</p>';
+    });
+  });
+}
 
 /* ==================================================================
    Direction ↔ Vastu-astrology profile. The deity/planet associations
@@ -2256,15 +2601,9 @@ function roomBearingFromCentroid(room, centroid){
   return normalize(Math.atan2(dx, -dy) * 180 / Math.PI);
 }
 
-const ROOM_TYPES = [
-  { key: "ENTRANCE", label: "Entrance" },
-  { key: "KITCHEN", label: "Kitchen" },
-  { key: "PRIMARY_BEDROOM", label: "Primary bedroom" },
-  { key: "TOILET", label: "Toilet/bathroom" },
-  { key: "LIVING_ROOM", label: "Living room" },
-  { key: "WATER_TANK", label: "Water tank" },
-  { key: "OTHER", label: "Other room (no Vastu check)" },
-];
+const ROOM_TYPES = HOME_ELEMENTS.concat([
+  { key: "OTHER", label: "Other room (no Vastu check)" }
+]);
 
 let rooms = [
   { type: "LIVING_ROOM", x: 0, y: 0, w: 5, d: 4, h: 2.6 },
@@ -2318,11 +2657,65 @@ document.getElementById("fundaOpenBtn").addEventListener("click", () => {
   if (url) window.open(url, "_blank", "noopener");
 });
 
+document.getElementById("parseListingBtn").addEventListener("click", () => {
+  const text = document.getElementById("listingPasteText").value;
+  const mentions = parseOrientationMentions(text);
+  const resultEl = document.getElementById("listingParseResult");
+  if (mentions.length === 0) {
+    resultEl.textContent = "No direction words found in that text. This is a simple keyword scan (not real extraction) — it only catches words like \"south-facing\" or \"zuidoosten\" written out directly.";
+    return;
+  }
+  const list = mentions.map(m => "\"" + m.matchedText + "\" → " + m.direction8).join(", ");
+  resultEl.innerHTML = "Found: " + list +
+    ". This is a plain keyword match, not verified extraction — confirm against the actual listing, then measure for real on the Dial tab rather than relying on this alone.";
+});
+
+let floorPlanImage = null;
+let floorPlanVisible = false;
+
+document.getElementById("floorPlanUpload").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      floorPlanImage = img;
+      floorPlanVisible = true;
+      document.getElementById("floorPlanToggleBtn").textContent = "Show behind plan: On";
+      if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+document.getElementById("floorPlanToggleBtn").addEventListener("click", () => {
+  if (!floorPlanImage) return;
+  floorPlanVisible = !floorPlanVisible;
+  document.getElementById("floorPlanToggleBtn").textContent = "Show behind plan: " + (floorPlanVisible ? "On" : "Off");
+  if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+});
+
+document.getElementById("floorPlanClearBtn").addEventListener("click", () => {
+  floorPlanImage = null;
+  floorPlanVisible = false;
+  document.getElementById("floorPlanUpload").value = "";
+  document.getElementById("floorPlanToggleBtn").textContent = "Show behind plan: Off";
+  if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+});
+
 function drawPlan2d(roomsList, centroid){
   const canvas = document.getElementById("planCanvas");
   const ctx = canvas.getContext("2d");
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0,0,w,h);
+
+  if (floorPlanVisible && floorPlanImage) {
+    ctx.globalAlpha = 0.45;
+    ctx.drawImage(floorPlanImage, 0, 0, w, h);
+    ctx.globalAlpha = 1.0;
+  }
 
   const maxX = Math.max(...roomsList.map(r => r.x + r.w), 1);
   const maxY = Math.max(...roomsList.map(r => r.y + r.d), 1);
@@ -2788,12 +3181,11 @@ let aiEnabled = false;
 let cocoModel = null;
 let cocoLoading = false;
 let detectionTimer = null;
-let taggedRooms = [];
 
 function populateManualRoomSelect(){
   const sel = document.getElementById("manualRoomSelect");
   sel.innerHTML = "";
-  ROOM_TYPES.filter(t => t.key !== "OTHER").forEach(t => {
+  HOME_ELEMENTS.forEach(t => {
     const opt = document.createElement("option");
     opt.value = t.key;
     opt.textContent = t.label;
@@ -2807,26 +3199,39 @@ document.getElementById("tagPanelToggleBtn").addEventListener("click", () => {
   panel.style.display = panel.style.display === "none" ? "block" : "none";
 });
 
+function removeAreaDirection(areaTypeKey){
+  const profile = loadHomeProfile() || defaultHomeProfile();
+  const areaDirections = Object.assign({}, profile.areaDirections);
+  delete areaDirections[areaTypeKey];
+  const update = { areaDirections: areaDirections };
+  if (areaTypeKey === "ENTRANCE") update.entranceBearing = null;
+  updateHomeProfile(update);
+}
+
 function renderTaggedRooms(){
   const listEl = document.getElementById("taggedRoomsList");
-  if (taggedRooms.length === 0) {
-    listEl.innerHTML = '<p class="small">No tags yet — pick a room type above and tap Save tag while facing that part of the house.</p>';
+  const profile = loadHomeProfile();
+  const saved = (profile && profile.areaDirections) ? profile.areaDirections : {};
+  const keys = Object.keys(saved);
+  if (keys.length === 0) {
+    listEl.innerHTML = '<p class="small">No saved directions yet — pick an area above and tap Save while facing that part of the house.</p>';
     return;
   }
   listEl.innerHTML = "";
-  taggedRooms.forEach((t, i) => {
+  keys.forEach(key => {
+    const entry = saved[key];
     const row = document.createElement("div");
     row.className = "tag-row";
-    const r = evaluateMatrix(t.room, t.direction8);
+    const r = evaluateMatrix(key, entry.dir8);
     const statusShort = r.status === "IDEAL" ? "Ideal" : (r.status === "FORBIDDEN" ? "Forbidden" : "Remedy");
     row.innerHTML =
-      '<span>' + roomLabel(t.room) + ' — ' + t.direction8 + ' (' + statusShort + ')</span>' +
-      '<button data-remove="' + i + '">✕</button>';
+      '<span>' + roomLabel(key) + ' — ' + (entry.dir32 || entry.dir8) + ' (' + statusShort + ')</span>' +
+      '<button data-remove="' + key + '">✕</button>';
     listEl.appendChild(row);
   });
   listEl.querySelectorAll("button[data-remove]").forEach(btn => {
     btn.addEventListener("click", () => {
-      taggedRooms.splice(parseInt(btn.dataset.remove, 10), 1);
+      removeAreaDirection(btn.dataset.remove);
       renderTaggedRooms();
     });
   });
@@ -2836,12 +3241,11 @@ renderTaggedRooms();
 document.getElementById("tagRoomBtn").addEventListener("click", () => {
   if (!canAnalyze()) {
     document.getElementById("taggedRoomsList").innerHTML =
-      '<p class="small">Sensor accuracy is too low to trust the current direction — recalibrate before tagging.</p>';
+      '<p class="small">Sensor accuracy is too low to trust the current direction — recalibrate before saving.</p>';
     return;
   }
-  const room = document.getElementById("manualRoomSelect").value;
-  const dir8 = sectorName(sectorIndex(currentHeading(), 8), 8);
-  taggedRooms.push({ room, direction8: dir8, manual: true });
+  const areaTypeKey = document.getElementById("manualRoomSelect").value;
+  saveAreaDirection(areaTypeKey, currentHeading());
   renderTaggedRooms();
 });
 
