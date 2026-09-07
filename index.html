@@ -17,7 +17,7 @@
     --accent: #2f7fd1;
     --accent2: #8b5cf6;
     --text: #1a1a2e;
-    --text-dim: rgba(26,26,46,0.68);
+    --text-dim: rgba(26,26,46,0.76);
     --glass: rgba(255,255,255,0.72);
     --glass-strong: rgba(255,255,255,0.88);
     --glass-border: rgba(26,26,46,0.10);
@@ -212,9 +212,9 @@
   .room-compliance-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--glass-border); font-size: 12.5px; }
   .room-compliance-row:last-child { border-bottom: none; }
   .badge { padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 700; }
-  .badge-ideal { background: rgba(125,196,255,0.25); color: #cfe9ff; }
-  .badge-remedy { background: rgba(255,205,100,0.25); color: #ffe4a8; }
-  .badge-forbidden { background: rgba(255,110,110,0.25); color: #ffc2c2; }
+  .badge-ideal { background: rgba(125,196,255,0.30); color: #0b4a8f; }
+  .badge-remedy { background: rgba(230,160,20,0.28); color: #7a4b00; }
+  .badge-forbidden { background: rgba(220,50,50,0.24); color: #8f1414; }
 
   /* NL Rules screen */
   select.full {
@@ -566,19 +566,44 @@
       </div>
 
       <div class="card">
-        <h2>Upload your floor plan (optional visual reference)</h2>
-        <p>Upload a photo or screenshot of your actual floor plan to
-        trace your room layout against below — a plain image only
-        (JPG/PNG/screenshot), not a PDF; screenshot the PDF page first
-        if that's what you have. This is a visual reference only: there
-        is no automatic room detection from the image, and no AI
-        vision model tries to read it — you still enter each room's
-        position and size yourself in the list below.</p>
-        <input type="file" accept="image/*" id="floorPlanUpload">
+        <h2>Floor plans (multiple floors supported)</h2>
+        <p>Upload one image per floor (ground floor, first floor, etc.)
+        — plain photos/screenshots only, not PDFs; screenshot a PDF
+        page first if that's what you have. Each floor renders as a
+        semi-transparent background to trace your room list against.
+        "Read floor plan text" runs real on-device text recognition
+        (OCR) to find room labels already printed on the image — there
+        is no AI that visually detects walls/room shapes, only text it
+        can actually read, and it will miss anything not labeled or
+        illegible in the photo.</p>
+        <input type="file" accept="image/*" id="floorPlanUpload" multiple>
+        <div id="floorPlanTabs" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;"></div>
         <div class="row" style="margin-top:8px;">
           <button class="ghost" id="floorPlanToggleBtn">Show behind plan: Off</button>
-          <button class="ghost" id="floorPlanClearBtn">Remove</button>
+          <button class="ghost" id="floorPlanClearBtn">Remove this floor</button>
         </div>
+        <button class="ghost" id="runOcrBtn" style="margin-top:8px;">Read floor plan text (OCR)</button>
+        <p class="small" id="ocrStatus" style="margin-top:4px;"></p>
+        <div id="ocrRoomsList"></div>
+
+        <div class="small" style="margin-top:12px; margin-bottom:4px;">Draw ideal-zone overlay on the image for:</div>
+        <select id="zoneOverlaySelect" class="full"></select>
+        <div class="small" style="margin:6px 0 4px;">Zones:</div>
+        <div class="segrow" id="overlaySectorSeg">
+          <button data-count="8" class="active">8</button>
+          <button data-count="16">16</button>
+          <button data-count="32">32</button>
+        </div>
+        <button class="ghost" id="zoneOverlayToggleBtn">Show overlay: Off</button>
+        <p class="small" style="margin-top:4px;">The overlay is centered
+        on the image's own midpoint as an approximation of the
+        Brahmasthan — not a substitute for the Center tab's real
+        plot-boundary calculation, which is more accurate if you have
+        it. At 16/32 zones, each fine slice still inherits its
+        compliance from the same 8-direction rule its wedge sits
+        within (e.g. every NE-range sliver reads as NE) — there's no
+        separate 16/32-specific ruleset, just a finer-grained view of
+        the same 8-direction logic used everywhere else in this app.</p>
       </div>
 
       <div class="card">
@@ -864,6 +889,41 @@ function parseOrientationMentions(text){
     seen.add(key);
     return true;
   });
+}
+
+/**
+ * Maps a short room-label string (as OCR reads directly off a floor
+ * plan, or as typed manually) to our HOME_ELEMENTS vocabulary. Checked
+ * in priority order (most specific first) so e.g. "Slaapkamer 1"
+ * matches PRIMARY_BEDROOM before the generic "slaapkamer" bedroom
+ * check would otherwise catch it. Returns null when nothing matches —
+ * callers must treat that as "couldn't identify this label", never
+ * guess a room type without a real keyword hit.
+ */
+function mapRoomLabelToType(text){
+  if (!text) return null;
+  const t = text.toLowerCase();
+
+  const checks = [
+    { key: "PRIMARY_BEDROOM", re: /slaapkamer\s*1\b|bedroom\s*1\b|master\s*bedroom|hoofdslaapkamer/ },
+    { key: "POOJA_ROOM", re: /pooja|gebedsruimte|prayer\s*room|mandir/ },
+    { key: "WASHING_AREA", re: /wasruimte|wasmachine|berging|utility|laundry|washing\s*(machine|area)?/ },
+    { key: "HEAT_PUMP_AREA", re: /warmtepomp|heat\s*pump/ },
+    { key: "WATER_TANK", re: /watertank|water\s*tank|boiler/ },
+    { key: "BACKYARD", re: /achtertuin|backyard/ },
+    { key: "GARDEN", re: /\btuin\b|\bgarden\b/ },
+    { key: "STAIRS", re: /\btrap\b|trapgat|\bstairs?\b|staircase/ },
+    { key: "TOILET", re: /\bwc\b|toilet|badkamer|bathroom|\bdouche\b|\bshower\b/ },
+    { key: "LIVING_ROOM", re: /woonkamer|huiskamer|zitkamer|living\s*room/ },
+    { key: "KITCHEN", re: /\bkeuken\b|\bkitchen\b/ },
+    { key: "ENTRANCE", re: /\bentree\b|\bhal\b|\bgang\b|entrance|\bhall\b|voordeur|front\s*door/ },
+    { key: "BEDROOM_2", re: /slaapkamer\s*\d*|bedroom\s*\d*/ }, // generic fallback, checked last
+  ];
+
+  for (const c of checks) {
+    if (c.re.test(t)) return c.key;
+  }
+  return null;
 }
 
 function renderCompassGlossary(){
@@ -2670,40 +2730,242 @@ document.getElementById("parseListingBtn").addEventListener("click", () => {
     ". This is a plain keyword match, not verified extraction — confirm against the actual listing, then measure for real on the Dial tab rather than relying on this alone.";
 });
 
-let floorPlanImage = null;
+let floorPlans = [];        // [{ label, img }]
+let currentFloorIndex = -1;
 let floorPlanVisible = false;
+let ocrResultsByFloor = {}; // { floorIndex: [{type, dir8, x, y}] }
+let zoneOverlayOn = false;
+let overlaySectorCount = 8;
 
-document.getElementById("floorPlanUpload").addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    const img = new Image();
-    img.onload = () => {
-      floorPlanImage = img;
+document.getElementById("overlaySectorSeg").addEventListener("click", (e) => {
+  if (e.target.tagName !== "BUTTON") return;
+  document.querySelectorAll("#overlaySectorSeg button").forEach(b => b.classList.remove("active"));
+  e.target.classList.add("active");
+  overlaySectorCount = parseInt(e.target.dataset.count, 10);
+  if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+});
+
+function renderFloorPlanTabs(){
+  const container = document.getElementById("floorPlanTabs");
+  container.innerHTML = "";
+  floorPlans.forEach((fp, i) => {
+    const btn = document.createElement("button");
+    btn.className = "lens-chip";
+    btn.style.boxShadow = "none";
+    btn.style.background = i === currentFloorIndex ? "var(--accent)" : "rgba(255,255,255,0.88)";
+    btn.style.color = i === currentFloorIndex ? "#fff" : "var(--text)";
+    btn.textContent = fp.label;
+    btn.addEventListener("click", () => {
+      currentFloorIndex = i;
       floorPlanVisible = true;
       document.getElementById("floorPlanToggleBtn").textContent = "Show behind plan: On";
+      renderFloorPlanTabs();
+      renderOcrResults();
       if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+    });
+    container.appendChild(btn);
+  });
+}
+
+document.getElementById("floorPlanUpload").addEventListener("change", (e) => {
+  const files = Array.from(e.target.files || []);
+  if (files.length === 0) return;
+  let loaded = 0;
+  files.forEach((file) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        floorPlans.push({ label: "Floor " + (floorPlans.length + 1), img: img });
+        currentFloorIndex = floorPlans.length - 1;
+        loaded++;
+        if (loaded === files.length) {
+          floorPlanVisible = true;
+          document.getElementById("floorPlanToggleBtn").textContent = "Show behind plan: On";
+          renderFloorPlanTabs();
+          if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+        }
+      };
+      img.src = ev.target.result;
     };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
+    reader.readAsDataURL(file);
+  });
 });
 
 document.getElementById("floorPlanToggleBtn").addEventListener("click", () => {
-  if (!floorPlanImage) return;
+  if (currentFloorIndex < 0) return;
   floorPlanVisible = !floorPlanVisible;
   document.getElementById("floorPlanToggleBtn").textContent = "Show behind plan: " + (floorPlanVisible ? "On" : "Off");
   if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
 });
 
 document.getElementById("floorPlanClearBtn").addEventListener("click", () => {
-  floorPlanImage = null;
-  floorPlanVisible = false;
+  if (currentFloorIndex < 0) return;
+  floorPlans.splice(currentFloorIndex, 1);
+  delete ocrResultsByFloor[currentFloorIndex];
+  currentFloorIndex = floorPlans.length > 0 ? Math.min(currentFloorIndex, floorPlans.length - 1) : -1;
+  floorPlanVisible = currentFloorIndex >= 0;
   document.getElementById("floorPlanUpload").value = "";
   document.getElementById("floorPlanToggleBtn").textContent = "Show behind plan: Off";
+  renderFloorPlanTabs();
+  renderOcrResults();
   if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
 });
+
+/* ---------- OCR: read room labels directly off the floor plan image ---------- */
+let tesseractLoading = false;
+
+function loadTesseract(){
+  return new Promise((resolve, reject) => {
+    if (typeof Tesseract !== "undefined") { resolve(); return; }
+    loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js")
+      .then(resolve).catch(reject);
+  });
+}
+
+function renderOcrResults(){
+  const listEl = document.getElementById("ocrRoomsList");
+  const results = ocrResultsByFloor[currentFloorIndex];
+  if (!results) { listEl.innerHTML = ""; return; }
+  if (results.length === 0) {
+    listEl.innerHTML = '<p class="small">No recognizable room labels found on this floor\'s image.</p>';
+    return;
+  }
+  let html = "";
+  results.forEach(item => {
+    const result = evaluateMatrix(item.type, item.dir8);
+    const badgeCls = result.status === "IDEAL" ? "badge-ideal" : (result.status === "FORBIDDEN" ? "badge-forbidden" : "badge-remedy");
+    const badgeLabel = result.status === "IDEAL" ? "Ideal" : (result.status === "FORBIDDEN" ? "Forbidden" : "Remedy");
+    html += '<div class="room-compliance-row" style="flex-wrap:wrap;">' +
+      '<span>"' + item.rawText + '" → ' + roomLabel(item.type) + ' — ' + item.dir8 + '</span>' +
+      '<span class="badge ' + badgeCls + '">' + badgeLabel + '</span>' +
+      ((result.remedies.length || result.structuralOption) ?
+        '<div style="width:100%; margin-top:4px;">' + formatRemediesHtml(result.remedies) + formatStructuralOptionHtml(result.structuralOption) + '</div>' : '') +
+      '</div>';
+  });
+  listEl.innerHTML = html;
+}
+
+document.getElementById("runOcrBtn").addEventListener("click", async () => {
+  if (currentFloorIndex < 0) {
+    document.getElementById("ocrStatus").textContent = "Upload a floor plan image first.";
+    return;
+  }
+  const statusEl = document.getElementById("ocrStatus");
+  statusEl.textContent = "Loading text-recognition engine (first time only, needs internet)…";
+  try {
+    await loadTesseract();
+  } catch (e) {
+    statusEl.textContent = "Could not load the OCR engine (needs an internet connection the first time).";
+    return;
+  }
+
+  statusEl.textContent = "Reading text on this floor's image…";
+  const img = floorPlans[currentFloorIndex].img;
+  try {
+    const result = await Tesseract.recognize(img, "eng");
+    const words = (result.data.words || []).filter(w => w.confidence > 45 && w.text.trim().length > 1);
+    const centerX = img.naturalWidth / 2, centerY = img.naturalHeight / 2;
+    const found = [];
+    const seenTypes = new Set();
+    words.forEach(w => {
+      const type = mapRoomLabelToType(w.text);
+      if (!type) return;
+      const wordCenterX = (w.bbox.x0 + w.bbox.x1) / 2;
+      const wordCenterY = (w.bbox.y0 + w.bbox.y1) / 2;
+      const bearing = roomBearingFromCentroid(
+        { x: wordCenterX, y: wordCenterY, w: 0, d: 0 },
+        { x: centerX, y: centerY }
+      );
+      const dir8 = sectorName(sectorIndex(bearing, 8), 8);
+      const dedupeKey = type + ":" + dir8;
+      if (seenTypes.has(dedupeKey)) return;
+      seenTypes.add(dedupeKey);
+      found.push({ rawText: w.text.trim(), type: type, dir8: dir8, x: wordCenterX, y: wordCenterY });
+    });
+    ocrResultsByFloor[currentFloorIndex] = found;
+    statusEl.textContent = found.length > 0 ?
+      "Found " + found.length + " recognizable room label" + (found.length === 1 ? "" : "s") + ". Direction is measured from this image's own midpoint, as an approximation — the Center tab's plot-based Brahmasthan is more accurate if you have it." :
+      "OCR ran, but found no text it could match to a known room type.";
+    renderOcrResults();
+  } catch (e) {
+    statusEl.textContent = "OCR failed to process this image. Try a clearer/higher-resolution photo.";
+  }
+});
+
+/* ---------- Ideal-zone overlay: shows where a room type should/shouldn't go, drawn on the image itself ---------- */
+function populateZoneOverlaySelect(){
+  const sel = document.getElementById("zoneOverlaySelect");
+  sel.innerHTML = "";
+  HOME_ELEMENTS.forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t.key;
+    opt.textContent = t.label;
+    sel.appendChild(opt);
+  });
+}
+populateZoneOverlaySelect();
+
+document.getElementById("zoneOverlayToggleBtn").addEventListener("click", () => {
+  zoneOverlayOn = !zoneOverlayOn;
+  document.getElementById("zoneOverlayToggleBtn").textContent = "Show overlay: " + (zoneOverlayOn ? "On" : "Off");
+  if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+});
+
+function drawZoneOverlay(ctx, cx, cy, radius, elementKey, sectorCount){
+  sectorCount = sectorCount || 8;
+  const sectorWidth = 360 / sectorCount;
+  for (let i = 0; i < sectorCount; i++) {
+    const center = i * sectorWidth;
+    const parentDir8 = EIGHT_NAMES[sectorPrefixIndex(center)];
+    const result = evaluateMatrix(elementKey, parentDir8);
+    const color = result.status === "IDEAL" ? "rgba(60,180,90,0.35)" :
+      (result.status === "FORBIDDEN" ? "rgba(220,50,50,0.30)" : "rgba(230,160,20,0.28)");
+    const startAngle = (center - sectorWidth / 2 - 90) * Math.PI / 180;
+    const endAngle = startAngle + sectorWidth * Math.PI / 180;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, radius, startAngle, endAngle);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    // Thinner, lighter dividers as density increases so 32 slices don't
+    // turn into a solid dark ring of stroke lines.
+    ctx.strokeStyle = sectorCount === 8 ? "rgba(26,26,46,0.4)" : "rgba(26,26,46,0.22)";
+    ctx.lineWidth = sectorCount === 8 ? 1 : 0.5;
+    ctx.stroke();
+  }
+
+  // Per-wedge text labels only make sense at 8-count density — at
+  // 16/32 there isn't room to letter each sliver legibly, so those
+  // modes rely on the color coding plus the N/E/S/W markers instead.
+  if (sectorCount === 8) {
+    ctx.fillStyle = "#1a1a2e";
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "center";
+    for (let i = 0; i < 8; i++) {
+      const center = i * 45;
+      const rad = (center - 90) * Math.PI / 180;
+      const labelR = radius * 0.72;
+      ctx.fillText(EIGHT_NAMES[i], cx + labelR * Math.cos(rad), cy + labelR * Math.sin(rad));
+    }
+  } else {
+    ctx.fillStyle = "#1a1a2e";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("N", cx, cy - radius - 4);
+    ctx.fillText("S", cx, cy + radius + 12);
+    ctx.textAlign = "left";
+    ctx.fillText("E", cx + radius + 4, cy + 4);
+    ctx.textAlign = "right";
+    ctx.fillText("W", cx - radius - 4, cy + 4);
+  }
+
+  ctx.fillStyle = "#1a1a2e";
+  ctx.font = "bold 11px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Zones for: " + roomLabel(elementKey) + " (" + sectorCount + ")", cx, 14);
+}
 
 function drawPlan2d(roomsList, centroid){
   const canvas = document.getElementById("planCanvas");
@@ -2711,10 +2973,16 @@ function drawPlan2d(roomsList, centroid){
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0,0,w,h);
 
-  if (floorPlanVisible && floorPlanImage) {
+  const currentImg = currentFloorIndex >= 0 ? floorPlans[currentFloorIndex].img : null;
+  if (floorPlanVisible && currentImg) {
     ctx.globalAlpha = 0.45;
-    ctx.drawImage(floorPlanImage, 0, 0, w, h);
+    ctx.drawImage(currentImg, 0, 0, w, h);
     ctx.globalAlpha = 1.0;
+  }
+
+  if (zoneOverlayOn && currentImg) {
+    const overlayType = document.getElementById("zoneOverlaySelect").value;
+    drawZoneOverlay(ctx, w / 2, h / 2, Math.min(w, h) / 2 - 10, overlayType, overlaySectorCount);
   }
 
   const maxX = Math.max(...roomsList.map(r => r.x + r.w), 1);
