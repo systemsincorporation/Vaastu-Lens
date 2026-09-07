@@ -1,6 +1,94 @@
 # VastuLens — Install On Your Phone, or Deploy to GitHub Pages
 
-## What changed since the previous version (full test pass)
+## Latest round — fully fused AR overlay + AI detection overhaul
+Two things, both on the Lens tab:
+
+**AI object detection was silently starving, not "broken."** The old
+code required 50%+ confidence and only recognized 10 specific COCO
+object classes across 4 room types — real phone-camera conditions
+(angle, distance, partial occlusion, lighting) routinely score
+legitimate objects at 35-50%, so most of what the camera actually saw
+was thrown away before you ever found out about it. Also worth saying
+plainly: there is no official, verified TensorFlow.js model that
+classifies "what type of room is this" the way COCO-SSD classifies
+"is there a chair here" — bolting on some unverified third-party "room
+classifier" from a random CDN would look like a fix while being fake,
+so that's not what this is. Instead:
+- Confidence floor lowered to 35%, and matching now covers ~20+ COCO
+  classes (bowls, cups, cutlery, dining tables, chairs, potted plants,
+  vases, clocks, books, toothbrushes, hair dryers, and more), each
+  weighted by how strong a real signal it actually is for a given room
+  — one detected oven is worth more than one detected cup, and several
+  weaker objects can now add up to a confirmed room the way one strong
+  object alone used to be required to.
+- **You can now see exactly what the model sees, every ~1.5s, live** —
+  a "Currently seeing: chair (72%), potted plant (58%)" line updates
+  continuously regardless of whether a room type has been confirmed
+  yet. Previously the banner said nothing at all until a full verdict
+  was confirmed, which is exactly why this looked like total silence
+  even in frames where it was correctly detecting real objects.
+
+**Fully fused AR overlay, live, on the camera itself:** the compass
+tick-ribbon and sector labels were already drawn directly over the
+video (this app already had a real, working AR compass — not a
+separate screen); what it was missing was the object-detection half.
+Added: a live bounding box + confidence label drawn around every
+object the model currently sees, positioned correctly against the
+actual visible video (accounting for `object-fit:cover` cropping,
+which a naive scale-by-ratio would have misaligned), color-coded
+green for high-confidence detections. Combined with the existing
+compass ticks, sector labels, heading readout, and the Vastu verdict
+banner — all layered directly over the live feed — this is now one
+coherent live AR HUD rather than a camera feed with separate text
+blocks stacked below it.
+
+## Previous round — the layering mess, OCR hangs, and compass sync
+Your screenshot showed the real bug clearly: three unrelated coordinate
+systems (the photo, the compass zone-overlay pie, and your typed room
+boxes) were all being drawn on the same canvas with no relationship to
+each other, producing exactly that unreadable overlap. Fixed that and
+the underlying gaps behind your other three complaints:
+
+- **The overlap is gone.** When a floor-plan photo is shown, the 2D
+  view is the photo plus its own OCR markers and zone overlay only.
+  When you hide the photo, the view switches to your typed room-box
+  diagram instead. They're never drawn on top of each other again.
+- **"Pin and correct" hanging.** Root cause: nothing stopped more than
+  one OCR pass from running at once — rotating/flipping quickly, or
+  tapping the OCR button again while a read was still in progress,
+  could stack up multiple Tesseract runs competing for the same CPU
+  core, which is exactly what reads as the app freezing. There's now a
+  guard: only one OCR pass runs at a time, with a clear "already
+  reading, please wait" message instead of silently piling up.
+- **A real "change direction" control.** Every tagged room (OCR,
+  manual, or compass) now has a **Remove** button right next to it —
+  previously the only way to change one was to add a new tag that
+  superseded the old (which stayed on screen, struck through, possibly
+  reading as "I can't get rid of the wrong one").
+- **The actual "sync with the compass" feature, using your phone's real
+  sensor:**
+  - **Calibrate photo's north** — point your phone the way the photo's
+    top edge actually faces in real life and tap once; every OCR word
+    and manual tap on that photo is now measured against your real
+    compass reading instead of assuming the image was drawn north-up.
+    Rotating the photo afterward keeps the calibration in sync
+    automatically; flipping it (mirroring) requires recalibrating,
+    since a mirror can't be corrected with a simple rotation.
+  - **Stand at the Brahmasthan and point** — a second, photo-free way
+    to tag a direction: stand at/near your home's center, pick what
+    you're facing (entrance, kitchen, etc.), point the phone at it,
+    and tap Save. This records your phone's live compass bearing
+    directly, with no image, no tap position, no orientation
+    assumption at all. For "is this actually the kitchen" as a second
+    opinion before you tag it, use the Lens tab's existing live-camera
+    AI object detection, then come back and save the direction here.
+  Both calibration and stand-and-point reuse the exact same
+  battle-tested compass state the Dial tab already keeps live in the
+  background (it's continuously updated regardless of which tab is
+  open) — no separate sensor plumbing was needed for this, which is
+  also why it works immediately.
+
+## Previous round of fixes
 Ran the app's own logic through an automated test harness (44 checks:
 compass sector math, English+Dutch OCR label mapping, dimension
 parsing, PDOK coordinate parsing, bearing geometry, and the full

@@ -638,6 +638,12 @@
           <button class="ghost" id="floorPlanToggleBtn">Show behind plan: Off</button>
           <button class="ghost" id="floorPlanClearBtn">Remove this floor</button>
         </div>
+        <p class="small" style="margin-top:6px;">When the photo is shown, the
+        view below is the photo plus its own OCR markers/zone overlay.
+        When it's hidden, the view below switches to the room boxes
+        you type in further down — the two aren't drawn on top of each
+        other any more, since they're two different, unrelated
+        coordinate systems and overlapping them just produced clutter.</p>
         <p class="small" style="margin-top:8px; margin-bottom:4px;">If the detected directions come out
         wrong (e.g. the plan wasn't drawn north-up, or was scanned
         upside down), correct the image's own orientation here — this
@@ -648,9 +654,33 @@
           <button class="ghost" id="flipHBtn">Flip ↔</button>
           <button class="ghost" id="flipVBtn">Flip ↕</button>
         </div>
+
+        <div class="small" style="margin-top:12px; margin-bottom:4px;">Or skip the guesswork — calibrate this photo's north using your phone's real compass:</div>
+        <p class="small" style="margin-bottom:6px;">Hold your phone flat
+        (like the Dial tab) and point the <strong>top edge of the
+        phone</strong> the same way the <strong>top edge of this photo</strong>
+        faces in real life, then tap Calibrate. Every direction this
+        photo produces — OCR, manual taps, the zone overlay — is
+        measured against this from then on, instead of assuming the
+        image was drawn north-up.</p>
+        <button class="ghost" id="calibrateNorthBtn">Calibrate photo's north with compass</button>
+        <button class="ghost" id="clearNorthCalBtn">Clear calibration</button>
+        <p class="small" id="northCalStatus" style="margin-top:4px;"></p>
+
         <button class="ghost" id="runOcrBtn" style="margin-top:8px;">Read floor plan text (OCR)</button>
         <p class="small" id="ocrStatus" style="margin-top:4px;"></p>
         <div id="ocrRoomsList"></div>
+
+        <div class="small" style="margin-top:12px; margin-bottom:4px;">Or: stand at (or near) this home's Brahmasthan/center and point your phone — no photo needed for this part:</div>
+        <p class="small" style="margin-bottom:6px;">Pick what you're facing, hold the phone flat and point it at that
+        feature, then tap Save. This records the real compass bearing
+        directly — no photo, no tapping a point, no assumption about
+        which way the image was drawn. Use the Lens tab's live camera
+        (with AI object detection) first if you want a second opinion
+        on what a room actually is before you tag it.</p>
+        <select id="standPointTypeSelect" class="full"></select>
+        <button class="primary" id="standPointSaveBtn" style="margin-top:6px;">Save this direction</button>
+        <p class="small" id="standPointStatus" style="margin-top:4px;"></p>
 
         <div class="small" style="margin-top:12px; margin-bottom:4px;">Draw ideal-zone overlay on the image for:</div>
         <select id="zoneOverlaySelect" class="full"></select>
@@ -1877,11 +1907,64 @@ function resizeLensCanvas(){
 window.addEventListener("resize", resizeLensCanvas);
 document.getElementById("lensPermBtn").addEventListener("click", syncCamera);
 
+/**
+ * Video is displayed with CSS object-fit:cover (fills its box, crops
+ * the overflow, centered) — so a bounding box in the camera's native
+ * pixel space can't just be scaled by width-ratio/height-ratio, that
+ * would misalign against a cropped, non-uniformly-scaled video. This
+ * reproduces the same "cover" transform so boxes drawn on the canvas
+ * actually line up with what's visibly on screen.
+ */
+function videoRectToCanvasRect(x, y, w, h){
+  const vw = lensVideo.videoWidth, vh = lensVideo.videoHeight;
+  if (!vw || !vh) return null;
+  const boxW = lensCanvas.width, boxH = lensCanvas.height;
+  const scale = Math.max(boxW / vw, boxH / vh);
+  const renderedW = vw * scale, renderedH = vh * scale;
+  const offsetX = (boxW - renderedW) / 2, offsetY = (boxH - renderedH) / 2;
+  return {
+    x: offsetX + x * scale, y: offsetY + y * scale,
+    w: w * scale, h: h * scale
+  };
+}
+
+/**
+ * Draws a live bounding box + label for every object COCO-SSD is
+ * currently reporting, straight onto the camera view — this is the
+ * actual "fully fused AR" piece: instead of a black-box verdict
+ * appearing (or not) after several seconds, you see in real time
+ * exactly what the model does and doesn't recognize, frame to frame.
+ * Boxes only move once per detection pass (~1.5s, however long a
+ * COCO-SSD pass takes on this device) since that's the real cost of
+ * running the model, not a rendering limitation — redrawn every
+ * render() tick in between so they stay visually stable rather than
+ * flickering.
+ */
+function drawDetectionOverlay(){
+  if (!aiEnabled || lastDetectionPredictions.length === 0) return;
+  lastDetectionPredictions.forEach(p => {
+    const rect = videoRectToCanvasRect(p.bbox[0], p.bbox[1], p.bbox[2], p.bbox[3]);
+    if (!rect) return;
+    const isStrong = p.score >= 0.6;
+    lctx.strokeStyle = isStrong ? "#4ade80" : "rgba(255,255,255,0.6)";
+    lctx.lineWidth = isStrong ? 2.5 : 1.5;
+    lctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+    const label = p.class + " " + Math.round(p.score * 100) + "%";
+    lctx.font = "bold 12px sans-serif";
+    const textW = lctx.measureText(label).width;
+    lctx.fillStyle = isStrong ? "rgba(74,222,128,0.9)" : "rgba(0,0,0,0.6)";
+    lctx.fillRect(rect.x, Math.max(0, rect.y - 16), textW + 8, 16);
+    lctx.fillStyle = isStrong ? "#052e12" : "#fff";
+    lctx.fillText(label, rect.x + 4, Math.max(12, rect.y - 4));
+  });
+}
+
 function renderLens(heading, currentIdx, risk){
   if (!cameraStarted) return;
   if (lensCanvas.width === 0) resizeLensCanvas();
   const w = lensCanvas.width, h = lensCanvas.height;
   lctx.clearRect(0,0,w,h);
+  drawDetectionOverlay();
   const midY = h/2;
   const pxPerDeg = w / FOV_DEG;
   const count = state.sectorCount;
@@ -3166,30 +3249,76 @@ function directionProfileSummary(dir8){
    Camera room-detection heuristic. Maps general object-detection
    classes (from a pretrained COCO-SSD model — 80 generic everyday-
    object categories, not a dedicated room classifier) to a best-guess
-   room type. This is a heuristic, not a certified classifier: it can
-   misfire (e.g. a microwave in a garage), which is exactly why manual
-   tagging always stays available alongside it.
+   room type.
+
+   IMPORTANT, stated plainly rather than glossed over: as of this
+   writing there is no official, verified TensorFlow.js model that
+   directly classifies "what type of room is this" the way COCO-SSD
+   classifies "is there a chair in this image" — TensorFlow.js's own
+   model library ships object detectors (COCO-SSD) and general image
+   classifiers (MobileNet/ImageNet), neither of which has "kitchen" or
+   "bedroom" as an output class. Bolting on an unverified third-party
+   "room classifier" model from a random CDN — one this app can't
+   confirm actually works, is correctly labeled, or will keep existing
+   — would look like a fix while being fake. The honest, verifiable
+   approach is what's below: infer room type from the actual physical
+   objects the model can reliably detect, weighted by how strong a
+   signal each object really is, and be transparent in the UI about
+   both what was seen and how confident the inference is — rather than
+   silently showing nothing (the previous behavior) whenever the exact
+   handful of objects it used to require weren't in frame.
    ================================================================== */
 const ROOM_DETECTION_RULES = [
-  { room: "KITCHEN", classes: ["oven", "microwave", "refrigerator", "toaster", "sink"] },
-  { room: "TOILET", classes: ["toilet", "sink"] },
-  { room: "PRIMARY_BEDROOM", classes: ["bed"] },
-  { room: "LIVING_ROOM", classes: ["couch", "tv", "remote"] },
+  { room: "KITCHEN", classes: [
+    { c: "oven", w: 3 }, { c: "microwave", w: 3 }, { c: "refrigerator", w: 3 },
+    { c: "toaster", w: 2 }, { c: "sink", w: 1.2 }, { c: "bowl", w: 0.8 },
+    { c: "cup", w: 0.6 }, { c: "wine glass", w: 0.6 }, { c: "bottle", w: 0.4 },
+    { c: "fork", w: 0.8 }, { c: "knife", w: 0.8 }, { c: "spoon", w: 0.8 },
+  ]},
+  { room: "TOILET", classes: [
+    { c: "toilet", w: 3 }, { c: "hair drier", w: 1.5 }, { c: "toothbrush", w: 2 },
+    { c: "sink", w: 0.8 },
+  ]},
+  { room: "PRIMARY_BEDROOM", classes: [
+    { c: "bed", w: 3 }, { c: "clock", w: 0.4 }, { c: "book", w: 0.3 },
+  ]},
+  { room: "LIVING_ROOM", classes: [
+    { c: "couch", w: 2.5 }, { c: "tv", w: 2 }, { c: "remote", w: 1.5 },
+    { c: "dining table", w: 1 }, { c: "chair", w: 0.6 },
+    { c: "potted plant", w: 0.4 }, { c: "book", w: 0.3 }, { c: "vase", w: 0.3 },
+  ]},
 ];
 
-function inferRoomFromDetections(detectedClasses){
-  const set = new Set(detectedClasses);
-  const matches = ROOM_DETECTION_RULES
-    .map(rule => ({
-      room: rule.room,
-      matched: rule.classes.filter(c => set.has(c)),
-    }))
-    .filter(m => m.matched.length > 0);
+/**
+ * classScores: array of {class, score} — one per detected object,
+ * duplicates included (two chairs count twice, reinforcing the
+ * LIVING_ROOM signal), each contributing its detector confidence
+ * times that class's room-signal weight. Returns the highest-scoring
+ * room above a minimum bar, or null — never guesses with nothing to
+ * go on.
+ */
+const ROOM_DETECTION_MIN_SCORE = 1.0;
 
-  if (matches.length === 0) return null;
-
-  matches.sort((a, b) => b.matched.length - a.matched.length);
-  return { room: matches[0].room, matchedClasses: matches[0].matched };
+function inferRoomFromDetections(classScores){
+  const totals = {};
+  const matchedByRoom = {};
+  classScores.forEach(({ cls, score }) => {
+    ROOM_DETECTION_RULES.forEach(rule => {
+      const hit = rule.classes.find(x => x.c === cls);
+      if (!hit) return;
+      totals[rule.room] = (totals[rule.room] || 0) + hit.w * score;
+      matchedByRoom[rule.room] = matchedByRoom[rule.room] || new Set();
+      matchedByRoom[rule.room].add(cls);
+    });
+  });
+  let best = null;
+  Object.keys(totals).forEach(room => {
+    if (totals[room] >= ROOM_DETECTION_MIN_SCORE && (!best || totals[room] > best.score)) {
+      best = { room, score: totals[room] };
+    }
+  });
+  if (!best) return null;
+  return { room: best.room, matchedClasses: Array.from(matchedByRoom[best.room]) };
 }
 
 const DETECTION_CONFIRM_STREAK = 2; // consecutive agreeing frames required before confirming a NEW room (reduces flicker between misreads)
@@ -3444,16 +3573,95 @@ function applyFloorPlanTransform(partial){
 
 document.getElementById("rotateBtn").addEventListener("click", () => {
   if (currentFloorIndex < 0) return;
-  const current = floorPlans[currentFloorIndex].transform.rotation;
+  const entry = floorPlans[currentFloorIndex];
+  const current = entry.transform.rotation;
+  // A 90° clockwise rotate means whatever used to be pointing 90° to
+  // the left of "up" is now "up" — so a compass calibration already
+  // set for this photo stays correct if we shift it by -90° along with
+  // the rotation, instead of forcing the user to recalibrate every time.
+  if (typeof entry.northOffsetDeg === "number") {
+    entry.northOffsetDeg = normalize(entry.northOffsetDeg - 90);
+  }
   applyFloorPlanTransform({ rotation: (current + 90) % 360 });
 });
 document.getElementById("flipHBtn").addEventListener("click", () => {
   if (currentFloorIndex < 0) return;
+  // Mirroring flips rotational handedness — a simple degree offset
+  // can't carry a calibration through that, so require recalibration
+  // rather than silently keep a now-wrong one.
+  floorPlans[currentFloorIndex].northOffsetDeg = 0;
   applyFloorPlanTransform({ flipH: !floorPlans[currentFloorIndex].transform.flipH });
 });
 document.getElementById("flipVBtn").addEventListener("click", () => {
   if (currentFloorIndex < 0) return;
+  floorPlans[currentFloorIndex].northOffsetDeg = 0;
   applyFloorPlanTransform({ flipV: !floorPlans[currentFloorIndex].transform.flipV });
+});
+
+/**
+ * Compass-based north calibration for a floor plan photo. Instead of
+ * assuming the image was drawn north-up (the previous, silent
+ * assumption behind every OCR/manual-tap bearing), the user points
+ * their phone the same way the photo's own top edge faces in real
+ * life, and we record that heading directly. Every bearing computed
+ * from a pixel position on this photo (OCR words, manual taps, the
+ * zone overlay) then adds this offset before sectorizing — this is
+ * the actual "sync with the compass" fix.
+ */
+document.getElementById("calibrateNorthBtn").addEventListener("click", () => {
+  const statusEl = document.getElementById("northCalStatus");
+  if (currentFloorIndex < 0) { statusEl.textContent = "Upload a floor plan image first."; return; }
+  if (!canAnalyze()) { statusEl.textContent = "Sensor accuracy too low right now — recalibrate the compass (figure-eight motion) and try again."; return; }
+  const heading = currentHeading();
+  floorPlans[currentFloorIndex].northOffsetDeg = heading;
+  statusEl.textContent = "Calibrated: this photo's top edge = " + Math.round(heading) + "° (" +
+    sectorName(sectorIndex(heading, 8), 8) + "). Existing OCR/manual marks below have been re-measured against it.";
+  // Re-derive every existing entry's dir8 in place against the new
+  // offset, rather than only affecting marks made from now on.
+  const results = ocrResultsByFloor[currentFloorIndex];
+  if (results && floorPlans[currentFloorIndex].effectiveCanvas) {
+    const img = floorPlans[currentFloorIndex].effectiveCanvas;
+    const centerX = img.width / 2, centerY = img.height / 2;
+    results.forEach(r => {
+      if (typeof r.x !== "number" || typeof r.y !== "number") return; // compass-captured entries have no pixel position to re-derive from
+      const pixelBearing = roomBearingFromCentroid({ x: r.x, y: r.y, w: 0, d: 0 }, { x: centerX, y: centerY });
+      r.dir8 = sectorName(sectorIndex(normalize(pixelBearing + heading), 8), 8);
+    });
+  }
+  renderOcrResults();
+  if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
+});
+document.getElementById("clearNorthCalBtn").addEventListener("click", () => {
+  if (currentFloorIndex < 0) return;
+  floorPlans[currentFloorIndex].northOffsetDeg = 0;
+  document.getElementById("northCalStatus").textContent = "Calibration cleared — back to assuming this photo was drawn north-up.";
+  runOcrOnCurrentFloor();
+});
+
+/**
+ * The alternative to any photo at all: stand at/near the Brahmasthan
+ * and point the phone at the feature directly. This writes into the
+ * exact same per-floor results list as OCR/manual marks (source:
+ * "compass"), so it shows up in the same list and participates in the
+ * same supersede-on-retag logic — it just has no pixel position, only
+ * a directly-measured bearing.
+ */
+document.getElementById("standPointSaveBtn").addEventListener("click", () => {
+  const statusEl = document.getElementById("standPointStatus");
+  if (currentFloorIndex < 0) { statusEl.textContent = "Upload (or select) a floor first — this direction is still recorded per floor."; return; }
+  if (!canAnalyze()) { statusEl.textContent = "Sensor accuracy too low right now — recalibrate the compass (figure-eight motion) and try again."; return; }
+  const type = document.getElementById("standPointTypeSelect").value;
+  const heading = currentHeading();
+  const dir8 = sectorName(sectorIndex(heading, 8), 8);
+  const results = (ocrResultsByFloor[currentFloorIndex] || []).slice();
+  results.forEach(r => { if (r.type === type && !r.superseded) r.superseded = true; });
+  results.push({
+    rawText: roomLabel(type) + " (compass reading)", type: type, dir8: dir8,
+    sizeHint: null, source: "compass", superseded: false
+  });
+  ocrResultsByFloor[currentFloorIndex] = results;
+  statusEl.textContent = "Saved " + roomLabel(type) + ": " + Math.round(heading) + "° (" + dir8 + ").";
+  renderOcrResults();
 });
 
 document.getElementById("overlaySectorSeg").addEventListener("click", (e) => {
@@ -3495,7 +3703,7 @@ document.getElementById("floorPlanUpload").addEventListener("change", (e) => {
     reader.onload = (ev) => {
       const img = new Image();
       img.onload = () => {
-        const entry = { label: "Floor " + (floorPlans.length + 1), img: img, transform: { rotation: 0, flipH: false, flipV: false } };
+        const entry = { label: "Floor " + (floorPlans.length + 1), img: img, transform: { rotation: 0, flipH: false, flipV: false }, northOffsetDeg: 0 };
         updateEffectiveCanvas(entry);
         floorPlans.push(entry);
         currentFloorIndex = floorPlans.length - 1;
@@ -3601,7 +3809,7 @@ function renderOcrResults(){
     return;
   }
   let html = "";
-  results.forEach(item => {
+  results.forEach((item, i) => {
     const result = evaluateMatrix(item.type, item.dir8);
     const badgeCls = result.status === "IDEAL" ? "badge-ideal" : (result.status === "FORBIDDEN" ? "badge-forbidden" : "badge-remedy");
     const badgeLabel = result.status === "IDEAL" ? "Ideal" : (result.status === "FORBIDDEN" ? "Forbidden" : "Remedy");
@@ -3610,16 +3818,22 @@ function renderOcrResults(){
         " · ~" + item.sizeHint.valueM2.toFixed(1) + "m² (from \"" + item.sizeHint.sourceText + "\" nearby)" :
         " · ~" + item.sizeHint.valueMeters.toFixed(2) + "m (from \"" + item.sizeHint.sourceText + "\" nearby)") :
       "";
-    const sourceTag = item.source === "manual" ? "manually marked" : "auto-detected";
+    const sourceTag = item.source === "manual" ? "manually marked" : (item.source === "compass" ? "compass reading" : "auto-detected");
     if (item.superseded) {
       html += '<div class="room-compliance-row" style="flex-wrap:wrap; opacity:0.5;">' +
         '<span style="text-decoration:line-through;">"' + item.rawText + '" → ' + roomLabel(item.type) + ' — ' + item.dir8 + '</span>' +
         '<span class="small">old (' + sourceTag + ') — replaced below</span>' +
         '</div>';
     } else {
+      // A direct "remove this tag" control — this is the simple,
+      // always-available way to change or clear a room's direction,
+      // rather than only being able to add a new one that supersedes
+      // the old (which stays visible struck-through, and could read as
+      // "I can't get rid of the wrong one").
       html += '<div class="room-compliance-row" style="flex-wrap:wrap;">' +
         '<span>"' + item.rawText + '" → ' + roomLabel(item.type) + ' — ' + item.dir8 + sizeText + ' <span class="small">(' + sourceTag + ')</span></span>' +
         '<span class="badge ' + badgeCls + '">' + badgeLabel + '</span>' +
+        '<button class="ghost" data-remove-tag="' + i + '" style="margin-left:6px; padding:2px 8px; font-size:12px;">Remove</button>' +
         ((result.remedies.length || result.structuralOption) ?
           '<div style="width:100%; margin-top:4px;">' + formatRemediesHtml(result.remedies) + formatStructuralOptionHtml(result.structuralOption) + '</div>' : '') +
         '</div>';
@@ -3627,6 +3841,19 @@ function renderOcrResults(){
   });
   listEl.innerHTML = html + unmatchedHtml;
 }
+
+// Delegated once, not re-attached on every render (the list's HTML is
+// fully replaced each time renderOcrResults runs).
+document.getElementById("ocrRoomsList").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-remove-tag]");
+  if (!btn) return;
+  const idx = parseInt(btn.dataset.removeTag, 10);
+  const results = ocrResultsByFloor[currentFloorIndex];
+  if (!results || isNaN(idx)) return;
+  results.splice(idx, 1);
+  renderOcrResults();
+  if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
+});
 
 /**
  * Runs OCR on the CURRENT floor's effectiveCanvas (the already-
@@ -3637,12 +3864,35 @@ function renderOcrResults(){
  * on higher-resolution input — a real, common OCR-quality technique,
  * not a cosmetic tweak.
  */
+let ocrRunning = false;
+
 async function runOcrOnCurrentFloor(){
   if (currentFloorIndex < 0) {
     document.getElementById("ocrStatus").textContent = "Upload a floor plan image first.";
     return;
   }
   const statusEl = document.getElementById("ocrStatus");
+  // Guard against overlapping runs — rotating/flipping quickly, or
+  // mashing the OCR button, used to be able to kick off several
+  // Tesseract passes at once with nothing to stop them, all competing
+  // for the same CPU core. On a mid/low-end phone that's exactly what
+  // reads as the app "hanging" rather than just being slow.
+  if (ocrRunning) {
+    statusEl.textContent = "Already reading this image — please wait for it to finish.";
+    return;
+  }
+  ocrRunning = true;
+  const runOcrBtn = document.getElementById("runOcrBtn");
+  if (runOcrBtn) runOcrBtn.disabled = true;
+  try {
+    await runOcrOnCurrentFloorInner(statusEl);
+  } finally {
+    ocrRunning = false;
+    if (runOcrBtn) runOcrBtn.disabled = false;
+  }
+}
+
+async function runOcrOnCurrentFloorInner(statusEl){
   statusEl.textContent = "Loading text-recognition engine (first time only, needs internet)…";
   try {
     await loadTesseract();
@@ -3703,15 +3953,17 @@ async function runOcrOnCurrentFloor(){
       }));
 
     const centerX = sourceCanvas.width / 2, centerY = sourceCanvas.height / 2;
+    const northOffsetDeg = entry.northOffsetDeg || 0;
     const found = [];
     const seenTypes = new Set();
     words.forEach(w => {
       const type = mapRoomLabelToType(w.text);
       if (!type) return;
-      const bearing = roomBearingFromCentroid(
+      const pixelBearing = roomBearingFromCentroid(
         { x: w.x, y: w.y, w: 0, d: 0 },
         { x: centerX, y: centerY }
       );
+      const bearing = normalize(pixelBearing + northOffsetDeg);
       const dir8 = sectorName(sectorIndex(bearing, 8), 8);
       const dedupeKey = type + ":" + dir8;
       if (seenTypes.has(dedupeKey)) return;
@@ -3784,6 +4036,19 @@ function populateManualMarkSelect(){
 }
 populateManualMarkSelect();
 
+function populateStandPointSelect(){
+  const sel = document.getElementById("standPointTypeSelect");
+  if (!sel) return;
+  sel.innerHTML = "";
+  HOME_ELEMENTS.forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t.key;
+    opt.textContent = t.label;
+    sel.appendChild(opt);
+  });
+}
+populateStandPointSelect();
+
 document.getElementById("planCanvas").addEventListener("click", (e) => {
   if (currentFloorIndex < 0 || !floorPlanVisible) return;
   const canvas = document.getElementById("planCanvas");
@@ -3811,10 +4076,11 @@ document.getElementById("manualMarkConfirmBtn").addEventListener("click", () => 
   const type = document.getElementById("manualMarkTypeSelect").value;
   const img = floorPlans[currentFloorIndex].effectiveCanvas;
   const centerX = img.width / 2, centerY = img.height / 2;
-  const bearing = roomBearingFromCentroid(
+  const pixelBearing = roomBearingFromCentroid(
     { x: pendingManualPoint.x, y: pendingManualPoint.y, w: 0, d: 0 },
     { x: centerX, y: centerY }
   );
+  const bearing = normalize(pixelBearing + (floorPlans[currentFloorIndex].northOffsetDeg || 0));
   const dir8 = sectorName(sectorIndex(bearing, 8), 8);
 
   const results = (ocrResultsByFloor[currentFloorIndex] || []).slice();
@@ -3847,7 +4113,11 @@ function drawOcrMarkers(ctx, results, imgW, imgH, canvasW, canvasH){
   if (!results || !imgW || !imgH) return;
   const sx = canvasW / imgW, sy = canvasH / imgH;
   results.forEach(item => {
-    if (item.superseded) return;
+    // Compass-captured entries (source:"compass") have a real bearing
+    // but no pixel position on this photo at all — there's nothing to
+    // place a pin at, so they only ever show up in the text list below,
+    // not as a marker here. Skip rather than draw at NaN,NaN.
+    if (item.superseded || typeof item.x !== "number" || typeof item.y !== "number") return;
     const cx = item.x * sx, cy = item.y * sy;
     ctx.beginPath();
     ctx.arc(cx, cy, 7, 0, 2 * Math.PI);
@@ -3881,16 +4151,26 @@ document.getElementById("zoneOverlayToggleBtn").addEventListener("click", () => 
   if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
 });
 
-function drawZoneOverlay(ctx, cx, cy, radius, elementKey, sectorCount){
+/**
+ * offsetDeg rotates the whole overlay to match a photo's compass
+ * calibration (see calibrateNorthBtn) — without it, this always drew
+ * compass-N at the top of the canvas regardless of which way the
+ * photo was actually facing, which is exactly the "N/S/E/W" the app
+ * shows around the wedges being wrong for anyone who hadn't rotated
+ * their photo to be perfectly north-up beforehand.
+ */
+function drawZoneOverlay(ctx, cx, cy, radius, elementKey, sectorCount, offsetDeg){
+  offsetDeg = offsetDeg || 0;
   sectorCount = sectorCount || 8;
   const sectorWidth = 360 / sectorCount;
+  const toCanvasAngleRad = (compassDeg) => (compassDeg - offsetDeg - 90) * Math.PI / 180;
   for (let i = 0; i < sectorCount; i++) {
     const center = i * sectorWidth;
     const parentDir8 = EIGHT_NAMES[sectorPrefixIndex(center)];
     const result = evaluateMatrix(elementKey, parentDir8);
     const color = result.status === "IDEAL" ? "rgba(60,180,90,0.35)" :
       (result.status === "FORBIDDEN" ? "rgba(220,50,50,0.30)" : "rgba(230,160,20,0.28)");
-    const startAngle = (center - sectorWidth / 2 - 90) * Math.PI / 180;
+    const startAngle = toCanvasAngleRad(center - sectorWidth / 2);
     const endAngle = startAngle + sectorWidth * Math.PI / 180;
     ctx.beginPath();
     ctx.moveTo(cx, cy);
@@ -3914,26 +4194,28 @@ function drawZoneOverlay(ctx, cx, cy, radius, elementKey, sectorCount){
     ctx.textAlign = "center";
     for (let i = 0; i < 8; i++) {
       const center = i * 45;
-      const rad = (center - 90) * Math.PI / 180;
+      const rad = toCanvasAngleRad(center);
       const labelR = radius * 0.72;
       ctx.fillText(EIGHT_NAMES[i], cx + labelR * Math.cos(rad), cy + labelR * Math.sin(rad));
     }
   } else {
     ctx.fillStyle = "#1a1a2e";
     ctx.font = "bold 11px sans-serif";
+    const nAngle = toCanvasAngleRad(0), sAngle = toCanvasAngleRad(180);
+    const eAngle = toCanvasAngleRad(90), wAngle = toCanvasAngleRad(270);
+    const labelR = radius + 14;
     ctx.textAlign = "center";
-    ctx.fillText("N", cx, cy - radius - 4);
-    ctx.fillText("S", cx, cy + radius + 12);
-    ctx.textAlign = "left";
-    ctx.fillText("E", cx + radius + 4, cy + 4);
-    ctx.textAlign = "right";
-    ctx.fillText("W", cx - radius - 4, cy + 4);
+    ctx.fillText("N", cx + labelR * Math.cos(nAngle), cy + labelR * Math.sin(nAngle));
+    ctx.fillText("S", cx + labelR * Math.cos(sAngle), cy + labelR * Math.sin(sAngle));
+    ctx.fillText("E", cx + labelR * Math.cos(eAngle), cy + labelR * Math.sin(eAngle));
+    ctx.fillText("W", cx + labelR * Math.cos(wAngle), cy + labelR * Math.sin(wAngle));
   }
 
   ctx.fillStyle = "#1a1a2e";
   ctx.font = "bold 11px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("Zones for: " + roomLabel(elementKey) + " (" + sectorCount + ")", cx, 14);
+  ctx.fillText("Zones for: " + roomLabel(elementKey) + " (" + sectorCount + ")" +
+    (offsetDeg ? " · compass-calibrated" : ""), cx, 14);
 }
 
 function drawPlan2d(roomsList, centroid){
@@ -3951,11 +4233,23 @@ function drawPlan2d(roomsList, centroid){
 
   if (zoneOverlayOn && currentImg) {
     const overlayType = document.getElementById("zoneOverlaySelect").value;
-    drawZoneOverlay(ctx, w / 2, h / 2, Math.min(w, h) / 2 - 10, overlayType, overlaySectorCount);
+    drawZoneOverlay(ctx, w / 2, h / 2, Math.min(w, h) / 2 - 10, overlayType, overlaySectorCount, floorPlans[currentFloorIndex].northOffsetDeg || 0);
   }
 
   if (currentImg) {
     drawOcrMarkers(ctx, ocrResultsByFloor[currentFloorIndex], currentImg.width, currentImg.height, w, h);
+  }
+
+  // The manually-typed room boxes below live in their own made-up
+  // meters grid — completely unrelated to the floor-plan photo's pixel
+  // space. Drawing both at once (as this used to) produces exactly the
+  // unreadable overlap of a "Kitchen" box sitting on top of an OCR
+  // "kitchen" marker sitting on top of a compass zone wedge, none of
+  // them actually aligned. Show one or the other: the photo view (with
+  // its own OCR markers/zone overlay) when a photo is toggled on, or
+  // the typed-room-boxes diagram when it isn't.
+  if (floorPlanVisible && currentImg) {
+    return;
   }
 
   const maxX = Math.max(...roomsList.map(r => r.x + r.w), 1);
@@ -4525,14 +4819,23 @@ function loadScript(src){
 
 let detectionMemory = defaultDetectionMemory();
 
+let lastDetectionPredictions = []; // raw COCO-SSD output from the most recent detection pass, kept for the live bounding-box overlay (see drawDetectionOverlay)
+let lastDetectionAt = 0;
+
 async function runDetectionOnce(){
   if (!aiEnabled || !cocoModel || !cameraStarted) return;
   try {
     const predictions = await cocoModel.detect(lensVideo);
-    const classes = predictions
-      .filter(p => p.score > 0.5)
-      .map(p => p.class);
-    const inferred = inferRoomFromDetections(classes);
+    // Lowered from 0.5: real phone-camera conditions (angle, distance,
+    // partial occlusion, lighting) routinely score legitimate objects
+    // in the 0.35-0.5 range with COCO-SSD — the old 0.5 floor was
+    // silently discarding a lot of real, correct detections, which is
+    // a large part of why this used to look like it detected nothing.
+    const usable = predictions.filter(p => p.score > 0.35);
+    lastDetectionPredictions = usable;
+    lastDetectionAt = Date.now();
+    const classScores = usable.map(p => ({ cls: p.class, score: p.score }));
+    const inferred = inferRoomFromDetections(classScores);
 
     detectionMemory = updateDetectionMemory(
       inferred ? inferred.room : null,
@@ -4555,26 +4858,41 @@ function renderDetectionBanner(){
   banner.style.display = "block";
   const confirmed = detectionMemory.confirmed;
 
+  // Live, per-frame "here's what the camera actually sees right now" —
+  // shown regardless of whether a room type has been confirmed yet.
+  // Previously the banner said nothing at all until a full room-type
+  // verdict was confirmed, which is exactly why this looked like it
+  // "detected nothing" even in frames where it was correctly seeing
+  // real objects — it just wasn't telling you.
+  const rawLine = lastDetectionPredictions.length > 0 ?
+    "Currently seeing: " + lastDetectionPredictions
+      .slice().sort((a, b) => b.score - a.score).slice(0, 5)
+      .map(p => p.class + " (" + Math.round(p.score * 100) + "%)").join(", ") :
+    (lastDetectionAt > 0 ? "Currently seeing: nothing the model recognizes in this frame." : "");
+
   if (!confirmed) {
-    banner.textContent = "AI room detection on — no recognizable kitchen/bathroom/bedroom/living-room objects confirmed recently.";
+    banner.innerHTML = "AI room detection on — no kitchen/bathroom/bedroom/living-room objects confirmed yet." +
+      (rawLine ? "<br><span class=\"small\">" + rawLine + "</span>" : "");
     return;
   }
 
   const ageSec = Math.round((Date.now() - confirmed.confirmedAt) / 1000);
   const freshnessNote = ageSec < 3 ? "" : " (last confirmed " + ageSec + "s ago — still showing)";
 
+  let verdictHtml;
   if (canAnalyze()) {
     const dir8 = sectorName(sectorIndex(currentHeading(), 8), 8);
     const r = evaluateMatrix(confirmed.room, dir8);
     const statusLabel = r.status === "IDEAL" ? "Ideal" : (r.status === "FORBIDDEN" ? "Forbidden" : "Permissible with remedy");
-    banner.innerHTML =
+    verdictHtml =
       '<strong>Detected: ' + roomLabel(confirmed.room) + '</strong> (via ' + confirmed.matchedClasses.join(", ") + ')' + freshnessNote + '<br>' +
       'Facing ' + dir8 + ' — ' + statusLabel + '. ' + r.explanation +
       formatRemediesHtml(r.remedies, r.remedies.length > 1 ? "Remedy options:" : "Remedy:") +
       formatStructuralOptionHtml(r.structuralOption);
   } else {
-    banner.textContent = "Detected: " + roomLabel(confirmed.room) + freshnessNote + " — recalibrate for a direction-based suggestion.";
+    verdictHtml = "Detected: " + roomLabel(confirmed.room) + freshnessNote + " — recalibrate for a direction-based suggestion.";
   }
+  banner.innerHTML = verdictHtml + (rawLine ? "<br><span class=\"small\">" + rawLine + "</span>" : "");
 }
 
 document.getElementById("aiToggleBtn").addEventListener("click", async () => {
@@ -4587,6 +4905,8 @@ document.getElementById("aiToggleBtn").addEventListener("click", async () => {
   } else {
     if (detectionTimer) { clearInterval(detectionTimer); detectionTimer = null; }
     detectionMemory = defaultDetectionMemory();
+    lastDetectionPredictions = [];
+    lastDetectionAt = 0;
     document.getElementById("detectionBanner").style.display = "none";
   }
 });
