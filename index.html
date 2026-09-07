@@ -320,6 +320,17 @@
         <p id="boundaryText"></p>
       </div>
 
+      <div class="card tertiary" style="margin-bottom:12px;">
+        <h2 style="margin-top:0;">Turning one way, but the dial moves the other way?</h2>
+        <p>This is a different, more fundamental bug than a simple
+        wrong number — turning right in real life should always move
+        the dial clockwise. If it moves counter-clockwise instead (or
+        vice versa), no offset or 180° flip can ever fix it — those
+        only shift the reading by a fixed amount, they can't reverse
+        which way it turns. This toggle fixes that directly.</p>
+        <button class="primary" id="reverseRotationBtn" style="width:100%;">Rotation direction: Reversed (default)</button>
+      </div>
+
       <div style="display:flex; justify-content:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
         <button id="dialCameraToggleBtn" class="lens-chip" style="box-shadow:none;">Camera background: Off</button>
         <button id="headingFlipBtn" class="lens-chip" style="box-shadow:none;">Flip 180°: Off</button>
@@ -327,9 +338,9 @@
 
       <div class="card tertiary" style="margin-bottom:12px;">
         <h2 style="margin-top:0;">Reading doesn't match your phone's compass?</h2>
-        <p>Phones and browsers genuinely disagree on how to report
-        compass heading, so this can happen on some devices. The
-        reliable fix: open your phone's own regular compass app
+        <p>If the dial rotates the <strong>right way</strong> as you
+        turn, but the number itself is off by a fixed amount, this is
+        the fix. Open your phone's own regular compass app
         <strong>without moving the phone</strong>, read the number it
         shows, and enter it here.</p>
         <input type="number" id="calibrateMatchInput" placeholder="e.g. 137" min="0" max="359">
@@ -339,9 +350,8 @@
 
       <p class="small" style="text-align:center; margin:0 0 6px;">If your readings consistently point the
       opposite way from reality (e.g. facing your actual front door reads
-      as the direction directly behind you), tap Flip 180° — this
-      corrects a known cross-browser inconsistency in how phones report
-      compass heading, and it's saved for next time.</p>
+      as the direction directly behind you), tap Flip 180° instead — a
+      simpler shortcut for that one specific case.</p>
 
       <div id="dial-wrap">
         <video id="dialVideo" autoplay playsinline muted style="display:none; position:absolute; inset:0; width:100%; height:100%; object-fit:cover; border-radius:20px;"></video>
@@ -1354,6 +1364,25 @@ try {
   if (!isNaN(savedOffset)) manualHeadingOffset = savedOffset;
 } catch (e) { /* localStorage unavailable — offset just stays 0 for this session */ }
 
+// Independent from the additive offset above — this corrects the
+// ROTATION DIRECTION itself (a mirror error), which no constant offset
+// can fix. Defaults to true: a real screen-recorded rotation test
+// showed the un-reversed formula moving opposite to an actual physical
+// turn, so this is the empirically-confirmed default now, not a guess.
+const ROTATION_REVERSE_KEY = "vastulens_reverse_rotation";
+let reverseRotationDirection = true;
+try {
+  const savedReverse = localStorage.getItem(ROTATION_REVERSE_KEY);
+  if (savedReverse !== null) reverseRotationDirection = savedReverse === "true";
+} catch (e) { /* localStorage unavailable — default stands for this session */ }
+
+function toggleRotationReverse(){
+  reverseRotationDirection = !reverseRotationDirection;
+  try { localStorage.setItem(ROTATION_REVERSE_KEY, String(reverseRotationDirection)); } catch (e) { /* not fatal */ }
+  const btn = document.getElementById("reverseRotationBtn");
+  if (btn) btn.textContent = "Rotation direction: " + (reverseRotationDirection ? "Reversed (default)" : "Normal");
+}
+
 function toggleHeadingFlip(){
   manualHeadingOffset = manualHeadingOffset === 180 ? 0 : 180;
   try { localStorage.setItem(HEADING_OFFSET_KEY, String(manualHeadingOffset)); } catch (e) { /* not fatal — just won't persist across reloads */ }
@@ -1377,6 +1406,9 @@ function computeCalibrationOffset(enteredHeading, currentDisplayedRawHeading, pr
 
 document.getElementById("headingFlipBtn").addEventListener("click", toggleHeadingFlip);
 document.getElementById("headingFlipBtn").textContent = manualHeadingOffset === 180 ? "Flip 180°: On" : "Flip 180°: Off";
+
+document.getElementById("reverseRotationBtn").addEventListener("click", toggleRotationReverse);
+document.getElementById("reverseRotationBtn").textContent = "Rotation direction: " + (reverseRotationDirection ? "Reversed (default)" : "Normal");
 
 document.getElementById("calibrateMatchBtn").addEventListener("click", () => {
   const statusEl = document.getElementById("calibrateMatchStatus");
@@ -1468,19 +1500,23 @@ function startSensors(){
     if (typeof e.webkitCompassHeading === "number") {
       heading = e.webkitCompassHeading; // iOS Safari: already true-compass heading (clockwise from north)
     } else if (e.alpha !== null && (e.absolute === true || "ondeviceorientationabsolute" in window === false)) {
-      // A user reported entrance direction reading consistently opposite
-      // (180deg off). Investigated rather than guessed: the W3C spec
-      // text defines alpha as counter-clockwise device-frame rotation,
-      // but real cross-browser measurement studies of actual Android
-      // implementations found alpha is reported directly as compass
-      // heading (clockwise from north) for the *absolute* event — no
-      // extra inversion needed. This app previously applied an extra
-      // (360 - alpha) flip on top of that, which double-inverts the
-      // reading. Fixed to use alpha directly. This API's behavior has
-      // genuinely varied across browsers/OS versions for over a decade,
-      // so if a specific device still reads backwards, use "Flip 180°"
-      // below rather than assume either direction is automatically right.
-      heading = normalize(e.alpha);
+      // A user's screen recording of a live, physical rotation test
+      // (not just a single bad reading) showed the needle moving
+      // opposite to the real turn — e.g. physically turning from
+      // facing east toward facing south, the dial moved toward north
+      // instead. That's a MIRRORED rotation direction, a fundamentally
+      // different bug from a constant offset: no amount of "Flip 180"
+      // or single-point calibration can ever fix a mirror, since those
+      // only add a constant — they can make one instant match, but
+      // every other angle stays wrong. A dynamic rotation test is the
+      // only way to actually distinguish "wrong constant" from "wrong
+      // rotation direction", and this is genuinely why the previous,
+      // research-based fix (alpha directly, no negation) missed it —
+      // that diagnosis came from a single static reading, which can't
+      // tell the two apart. reverseRotationDirection is the real fix:
+      // it inverts the sign of rotation itself, independent of any
+      // additive offset.
+      heading = reverseRotationDirection ? normalize(360 - e.alpha) : normalize(e.alpha);
     }
     if (heading === null) return;
     pushHeadingReading(normalize(heading + manualHeadingOffset));
@@ -1581,11 +1617,43 @@ document.getElementById("openGuideBtn").addEventListener("click", () => {
   document.querySelector('header nav button[data-tab="guide"]').click();
 });
 
+/**
+ * Pure geometry behind the dial's rotating compass rose: given a
+ * label's ORIGINAL position on the card (clockwise degrees from the
+ * top — N=0, E=90, S=180, W=270) and the current heading, returns
+ * where that label actually appears on screen (also clockwise degrees
+ * from the top of the canvas). The rose rotates by -heading so that
+ * whichever direction is currently faced always lands at the top,
+ * under the fixed pointer — this is the exact math drawDial's
+ * ctx.rotate(-heading) call implements, extracted here so the
+ * rotation direction itself can be verified without needing to read
+ * pixels off a rendered canvas.
+ */
+function roseLabelScreenAngle(originalCompassAngle, heading){
+  return normalize(originalCompassAngle - heading);
+}
+
 function drawDial(heading, count, highlightedIndex, risk){
   const w = dialCanvas.width, h = dialCanvas.height;
   dctx.clearRect(0,0,w,h); // transparent — no opaque fill, the app's glassy background shows through
   const cx = w/2, cy = h/2, radius = Math.min(w,h)/2 * 0.82;
   const sectorWidth = 360/count;
+
+  // A real compass works like this: the card (N/E/S/W, tick marks)
+  // stays oriented to true/magnetic north in the real world, so as
+  // YOU turn, the card visually rotates beneath your own fixed
+  // forward-facing viewpoint — north is never "stuck" at the top of
+  // your view unless you happen to be facing north. Rotating the
+  // whole rose by -heading reproduces exactly that: whichever
+  // direction you're currently facing always ends up under the fixed
+  // pointer at the top, and the card spins as you turn, not the
+  // other way around.
+  const roseRotation = -heading;
+
+  dctx.save();
+  dctx.translate(cx, cy);
+  dctx.rotate(roseRotation * Math.PI / 180);
+  dctx.translate(-cx, -cy);
 
   const start = (highlightedIndex*sectorWidth - sectorWidth/2 - 90) * Math.PI/180;
   const end = start + sectorWidth * Math.PI/180;
@@ -1618,29 +1686,39 @@ function drawDial(heading, count, highlightedIndex, risk){
     dctx.stroke();
   }
 
-  const nrad = (heading-90)*Math.PI/180;
+  // N/E/S/W are drawn here, INSIDE the rotated context — this is the
+  // actual fix: they rotate with the card instead of staying pinned to
+  // the top of the screen. N is marked in red, the standard convention
+  // on a real compass rose, so it's still instantly recognizable once
+  // it's no longer always at the same spot.
+  dctx.font = "600 13px sans-serif";
+  dctx.textAlign = "center";
+  dctx.fillStyle = "#c62828";
+  dctx.fillText("N", cx, cy-radius-8);
+  dctx.fillStyle = "#1a1a2e";
+  dctx.fillText("S", cx, cy+radius+16);
+  dctx.fillText("E", cx+radius+12, cy+4);
+  dctx.fillText("W", cx-radius-12, cy+4);
+
+  dctx.restore(); // back to the unrotated screen frame for the fixed pointer
+
+  // The one thing that's genuinely fixed for a handheld device: the
+  // direction you're currently facing is always "up" on the screen,
+  // by definition. This pointer marks that, and never rotates.
   dctx.beginPath();
-  dctx.moveTo(cx,cy);
-  dctx.lineTo(cx+radius*0.9*Math.cos(nrad), cy+radius*0.9*Math.sin(nrad));
-  dctx.strokeStyle = "#2f7fd1";
-  dctx.lineWidth = 5;
-  dctx.lineCap = "round";
+  dctx.moveTo(cx, cy - radius - 4);
+  dctx.lineTo(cx - 9, cy - radius + 16);
+  dctx.lineTo(cx + 9, cy - radius + 16);
+  dctx.closePath();
+  dctx.fillStyle = "#2f7fd1";
   dctx.shadowColor = "rgba(47,127,209,0.5)";
   dctx.shadowBlur = 10;
-  dctx.stroke();
+  dctx.fill();
   dctx.shadowBlur = 0;
   dctx.beginPath();
   dctx.arc(cx,cy,6,0,2*Math.PI);
   dctx.fillStyle = "#2f7fd1";
   dctx.fill();
-
-  dctx.fillStyle = "#1a1a2e";
-  dctx.font = "600 13px sans-serif";
-  dctx.textAlign = "center";
-  dctx.fillText("N", cx, cy-radius-8);
-  dctx.fillText("S", cx, cy+radius+16);
-  dctx.fillText("E", cx+radius+12, cy+4);
-  dctx.fillText("W", cx-radius-12, cy+4);
 }
 
 /* ==================================================================
