@@ -224,6 +224,14 @@
   .verdict-ok { background: rgba(125,220,160,0.18); border-color: rgba(125,220,160,0.4); }
   .verdict-maybe { background: var(--tertiary-bg); border-color: var(--tertiary-border); }
   .verdict-no { background: var(--warn-bg); border-color: var(--warn-border); }
+
+  .structural-details {
+    margin-top: 10px; background: var(--warn-bg); border: 1px solid var(--warn-border);
+    border-radius: 10px; padding: 8px 10px; font-size: 12px;
+  }
+  .structural-details summary { cursor: pointer; font-weight: 700; color: #a02020; }
+  .structural-details p, .structural-details li { color: var(--text-dim); }
+  .structural-details ul { margin-top: 4px; }
   a.official-link {
     display: block; text-align: center; background: var(--glass); border: 1px solid var(--glass-border);
     color: var(--accent); padding: 10px; border-radius: 10px; font-size: 13px; font-weight: 600; margin-top: 6px;
@@ -282,6 +290,8 @@
           <div class="center-text small" id="qualityLine" style="margin-top:6px;">
             Stability: good · ±5° (reading-stability heuristic, not a hardware sensor report)
           </div>
+          <button id="saveEntranceBtn" class="ghost" style="margin-top:10px;">Save this as my entrance direction</button>
+          <p class="small" id="saveEntranceStatus" style="text-align:center; margin-top:4px;"></p>
         </div>
       </div>
 
@@ -290,7 +300,14 @@
         <p id="boundaryText"></p>
       </div>
 
-      <div id="dial-wrap"><div id="dialGlow"></div><canvas id="dialCanvas" width="280" height="280"></canvas></div>
+      <div style="display:flex; justify-content:center; margin-bottom:6px;">
+        <button id="dialCameraToggleBtn" class="lens-chip" style="box-shadow:none;">Camera background: Off</button>
+      </div>
+
+      <div id="dial-wrap">
+        <video id="dialVideo" autoplay playsinline muted style="display:none; position:absolute; inset:0; width:100%; height:100%; object-fit:cover; border-radius:20px;"></video>
+        <div id="dialGlow"></div><canvas id="dialCanvas" width="280" height="280"></canvas>
+      </div>
 
       <div id="dialNameStrip"></div>
       <button id="openGuideBtn" class="ghost" style="margin-bottom:14px;">See all 32 direction names &amp; how to measure your home →</button>
@@ -438,6 +455,16 @@
         <p id="brahmaLatLon" style="display:none;"></p>
         <a id="brahmaMapLink" href="#" target="_blank" style="display:none; font-size:12.5px; color: var(--accent);">Open in Maps</a>
         <p id="brahmaConvexWarning" style="display:none; color:#ff8a8a;"></p>
+        <input type="text" id="homeLabelInput" placeholder="Label this home (e.g. 'My House', an address)" style="margin-top:8px;">
+        <button class="primary" id="saveHomeBtn">Save as my home's Brahmasthan</button>
+      </div>
+
+      <div class="card" id="savedHomeCard" style="display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h2 style="margin:0;">Your saved home</h2>
+          <button id="clearHomeBtn" class="ghost" style="width:auto; padding:6px 10px; font-size:11px;">Clear</button>
+        </div>
+        <div id="savedHomeBody" class="small"></div>
       </div>
     </section>
 
@@ -454,10 +481,18 @@
         you check.</p>
         <p class="small" id="matrixHeadingLine">—</p>
       </div>
+
+      <div class="card" id="matrixSavedHomeCard" style="display:none;">
+        <h2>Your saved home</h2>
+        <p class="small">Computed from your saved Brahmasthan/rooms — no live reading needed for this part.</p>
+        <div id="matrixSavedHomeBody"></div>
+      </div>
+
       <div class="card" id="matrixCameraCard" style="display:none; padding:0; overflow:hidden;">
         <video id="matrixVideo" autoplay playsinline muted style="width:100%; display:block; border-radius:14px; max-height:260px; object-fit:cover; background:#050505;"></video>
         <p class="small" id="matrixCameraStatus" style="padding:8px 12px;"></p>
       </div>
+      <p class="small" style="margin: 4px 4px 2px;"><strong>Live check</strong> — point and check any spot right now:</p>
       <div id="matrixButtons"></div>
       <div id="matrixResult"></div>
       <div class="card">
@@ -528,6 +563,8 @@
       <div class="card" id="complianceCard" style="display:none;">
         <h2>Per-room Vastu direction</h2>
         <div id="complianceList"></div>
+        <button class="primary" id="saveRoomsBtn" style="margin-top:10px;">Save these rooms to my home profile</button>
+        <p class="small" id="saveRoomsStatus" style="margin-top:4px;"></p>
       </div>
     </section>
 
@@ -973,12 +1010,14 @@ function activeShapeName(){
 }
 
 let matrixCameraOn = false;
+let dialCameraOn = false;
 
 function syncCamera(){
   const tab = activeTabName();
   const needsCamera = tab === "lens" ||
     (tab === "brahmasthan" && activeShapeName() === "auto") ||
-    (tab === "matrix" && matrixCameraOn);
+    (tab === "matrix" && matrixCameraOn) ||
+    (tab === "dial" && dialCameraOn);
 
   if (!needsCamera) {
     stopSharedStream();
@@ -1000,6 +1039,12 @@ function syncCamera(){
       document.getElementById("matrixCameraStatus").textContent =
         "Camera access denied or unavailable — checks below still work without it.";
     });
+  } else if (tab === "dial") {
+    attachCamera(document.getElementById("dialVideo"), () => {}, () => {
+      dialCameraOn = false;
+      document.getElementById("dialCameraToggleBtn").textContent = "Camera background: Off";
+      document.getElementById("dialVideo").style.display = "none";
+    });
   } else {
     attachCamera(document.getElementById("autoVideo"), () => {}, () => {
       document.getElementById("autoStatus").textContent =
@@ -1007,6 +1052,26 @@ function syncCamera(){
     });
   }
 }
+
+document.getElementById("dialCameraToggleBtn").addEventListener("click", () => {
+  dialCameraOn = !dialCameraOn;
+  document.getElementById("dialCameraToggleBtn").textContent = dialCameraOn ? "Camera background: On" : "Camera background: Off";
+  document.getElementById("dialVideo").style.display = dialCameraOn ? "block" : "none";
+  syncCamera();
+});
+
+document.getElementById("saveEntranceBtn").addEventListener("click", () => {
+  if (!canAnalyze()) {
+    document.getElementById("saveEntranceStatus").textContent =
+      "Sensor accuracy too low right now — recalibrate before saving.";
+    return;
+  }
+  const heading = currentHeading();
+  updateHomeProfile({ entranceBearing: heading });
+  document.getElementById("saveEntranceStatus").textContent =
+    "Saved: " + Math.round(heading) + "° (" + sectorName(sectorIndex(heading, 32), 32) + ")";
+  renderSavedHomeCard();
+});
 
 document.getElementById("matrixCameraToggleBtn").addEventListener("click", () => {
   matrixCameraOn = !matrixCameraOn;
@@ -1023,6 +1088,7 @@ document.querySelectorAll("header nav button").forEach(btn => {
     document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
     document.getElementById(btn.dataset.tab + "Screen").classList.add("active");
     syncCamera();
+    if (btn.dataset.tab === "matrix" && typeof renderMatrixSavedHome === "function") renderMatrixSavedHome();
   });
 });
 
@@ -1495,7 +1561,88 @@ document.getElementById("addVertexBtn").addEventListener("click", () => {
   renderVertexList();
 });
 
+/* ==================================================================
+   Home Profile — persists one saved property's Brahmasthan, entrance
+   bearing, and room list to localStorage, so the app can report a
+   room's or the whole house's direction instantly without re-taking a
+   live reading every time. This is the right tool for this job: a
+   real deployed app on a real device, not the sandboxed artifact
+   runtime where localStorage is unavailable — here it's just normal,
+   standard client-side storage.
+
+   Design intent (grounded in how zone placement is actually described
+   across popular Vastu sources): a room's ZONE is a property of the
+   building's geometry — its position relative to the Brahmasthan —
+   not something that needs re-measuring live every time. A live
+   compass reading is for FACING direction (which way a door/wall
+   points), which is a different, complementary measurement. Saving a
+   profile once lets the app answer "what zone is my kitchen in"
+   instantly, without asking the user to stand there with the phone
+   again.
+   ================================================================== */
+const HOME_PROFILE_KEY = "vastulens_home_profile_v1";
+
+function defaultHomeProfile(){
+  return {
+    label: "",
+    brahmasthan: null,       // {x, y} meters, from the Center tab
+    brahmasthanArea: null,   // m^2, for reference
+    entranceBearing: null,   // degrees, saved from a live Dial reading
+    rooms: [],               // [{type, x, y, w, d, dir8, dir32}]
+    savedAt: null
+  };
+}
+
+function loadHomeProfile(){
+  try {
+    const raw = localStorage.getItem(HOME_PROFILE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // Merge onto the default shape so an older/partial saved profile
+    // never crashes newer code that expects a field it doesn't have.
+    return Object.assign(defaultHomeProfile(), parsed);
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveHomeProfile(profile){
+  try {
+    localStorage.setItem(HOME_PROFILE_KEY, JSON.stringify(profile));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function clearHomeProfile(){
+  try {
+    localStorage.removeItem(HOME_PROFILE_KEY);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Merges a partial update onto whatever profile already exists (or a
+// fresh default one), so saving the Brahmasthan doesn't wipe out
+// already-saved rooms, and vice versa.
+function updateHomeProfile(partial){
+  const current = loadHomeProfile() || defaultHomeProfile();
+  const merged = Object.assign({}, current, partial, { savedAt: Date.now() });
+  saveHomeProfile(merged);
+  return merged;
+}
+
+function hasHomeProfile(){
+  const p = loadHomeProfile();
+  return !!(p && (p.brahmasthan || p.entranceBearing || (p.rooms && p.rooms.length)));
+}
+
+let lastBrahmaResult = null;
+
 function showBrahmaResult(result){
+  lastBrahmaResult = result;
   document.getElementById("brahmaError").style.display = "none";
   document.getElementById("brahmaCoords").textContent =
     result.x.toFixed(2) + " m, " + result.y.toFixed(2) + " m from your reference corner";
@@ -1663,6 +1810,47 @@ document.getElementById("autoFinishBtn").addEventListener("click", () => {
   });
 });
 
+/* ---------- Home Profile UI: save/clear/display ---------- */
+function renderSavedHomeCard(){
+  const profile = loadHomeProfile();
+  const card = document.getElementById("savedHomeCard");
+  if (!profile || !hasHomeProfile()) {
+    card.style.display = "none";
+    return;
+  }
+  card.style.display = "block";
+  const body = document.getElementById("savedHomeBody");
+  let html = "";
+  html += "<p><strong>" + (profile.label || "(unlabeled)") + "</strong></p>";
+  html += "<p>Brahmasthan: " + (profile.brahmasthan ?
+    profile.brahmasthan.x.toFixed(2) + "m, " + profile.brahmasthan.y.toFixed(2) + "m from reference corner" :
+    "not saved yet — calculate one above") + "</p>";
+  html += "<p>Entrance direction: " + (profile.entranceBearing != null ?
+    Math.round(profile.entranceBearing) + "° (" + sectorName(sectorIndex(profile.entranceBearing, 32), 32) + ") — save this from the Dial tab" :
+    "not saved yet — save a live reading from the Dial tab") + "</p>";
+  html += "<p>Rooms saved: " + (profile.rooms ? profile.rooms.length : 0) +
+    " — save these from the Design tab, see the full breakdown on the Matrix tab.</p>";
+  body.innerHTML = html;
+}
+
+document.getElementById("saveHomeBtn").addEventListener("click", () => {
+  if (!lastBrahmaResult) return;
+  const label = document.getElementById("homeLabelInput").value.trim();
+  updateHomeProfile({
+    label: label || loadHomeProfile()?.label || "",
+    brahmasthan: { x: lastBrahmaResult.x, y: lastBrahmaResult.y },
+    brahmasthanArea: lastBrahmaResult.area
+  });
+  renderSavedHomeCard();
+});
+
+document.getElementById("clearHomeBtn").addEventListener("click", () => {
+  clearHomeProfile();
+  renderSavedHomeCard();
+});
+
+renderSavedHomeCard();
+
 /* ==================================================================
    Vastu compliance matrix
    ================================================================== */
@@ -1678,68 +1866,263 @@ const HOME_ELEMENTS = [
 const MATRIX_RULES = {
   ENTRANCE: {
     ideal: ["N","NE","E"],
-    acceptable: {
-      W: "Place a bright light and a threshold motif at the entrance; keep the entry well lit.",
-      SW: "Widely considered the most difficult entrance direction; common non-demolition mitigation is a solid, heavier door with a raised threshold, kept secondary rather than primary."
-    },
-    forbidden: ["S","SE"]
+    forbidden: ["S","SE"],
+    remedies: {
+      W: [
+        "Keep the entrance brightly lit, day and night.",
+        "A small mirror facing inward just inside the doorway is a commonly cited folk remedy (not a structural fix).",
+        "Paint or decorate the entrance area in white or light tones."
+      ],
+      SW: [
+        "A solid, heavier door with a raised threshold, kept as a secondary rather than primary entrance if you have another option.",
+        "A Rahu Yantra placed near the entrance is a specific yantra some traditions associate with this direction.",
+        "A set of three small Vastu pyramids around the door frame is a specific remedy cited in some sources.",
+        "Keep this entrance well-lit and used less often than a north/east/northeast entrance if one exists."
+      ],
+      S: [
+        "Keep a bright or red-toned light lit near a south entrance — a commonly cited color-based mitigation.",
+        "Keep the entrance area clutter-free and well-lit."
+      ],
+      SE: [
+        "A Shukra Yantra (Venus yantra) is a specific yantra some traditions associate with the southeast.",
+        "A copper or brass threshold strip or nameplate is a symbolic mitigation cited in some sources.",
+        "Keep this entrance secondary in daily use if another entrance is available."
+      ]
+    }
   },
   KITCHEN: {
     ideal: ["SE"],
-    acceptable: {
-      NW: "Workable secondary choice in many sources; keep the cooktop positioned so the cook faces east while cooking.",
-      E: "Keep the cooktop away from the exact NE corner of the room; face east while cooking."
-    },
-    forbidden: ["NE","SW"]
+    forbidden: ["NE","SW"],
+    remedies: {
+      NW: [
+        "Keep the cooktop positioned so the cook faces east while cooking.",
+        "Considered a workable secondary choice in many sources without further mitigation needed."
+      ],
+      E: [
+        "Keep the cooktop away from the exact NE corner of the room.",
+        "Face east while cooking."
+      ],
+      NE: [
+        "A copper vessel of water or sea salt in a bowl, refreshed weekly, is a commonly cited symbolic remedy.",
+        "A Tulsi (holy basil) plant kept near this zone (not inside the kitchen itself) is a specific plant some sources associate with the northeast.",
+        "Keep this zone especially clean and uncluttered."
+      ],
+      SW: [
+        "A tied red cloth or thread near the cooktop is one folk remedy cited in some sources.",
+        "Keep the cooktop itself oriented so the cook faces east, even within a SW room.",
+        "A Rahu Yantra placed in this zone is a specific remedy some traditions cite for the southwest."
+      ]
+    }
   },
   PRIMARY_BEDROOM: {
     ideal: ["SW"],
-    acceptable: {
-      S: "Commonly treated as acceptable; keep the bed headboard to the south or west wall.",
-      W: "Keep the bed headboard against the west wall."
-    },
-    forbidden: ["NE","SE"]
+    forbidden: ["NE","SE"],
+    remedies: {
+      S: [
+        "Keep the bed headboard against the south or west wall.",
+        "Commonly treated as acceptable without further mitigation in many sources."
+      ],
+      W: [
+        "Keep the bed headboard against the west wall."
+      ],
+      NE: [
+        "Keep this zone especially uncluttered and used minimally for sleeping if another bedroom is available.",
+        "A northeast yantra placed in this zone is a symbolic remedy cited in some sources.",
+        "A small crystal ball kept in this corner is a specific remedy some sources cite for northeast zones."
+      ],
+      SE: [
+        "Avoid mixing this room's use with kitchen-adjacent fire elements; keep electrical/heat appliances out of this room.",
+        "Soft, cooling colors (blues, greens) are a commonly cited mitigation for a southeast bedroom.",
+        "A Shukra Yantra is a specific remedy some traditions cite for the southeast."
+      ]
+    }
   },
   TOILET: {
     ideal: ["NW","W"],
-    acceptable: {
-      S: "Keep the commode positioned so usage faces north or south, not east-west, and keep the door closed when not in use.",
-      N: "Common non-demolition mitigation is a partition or plant screen toward the adjacent NE zone, plus keeping the door closed."
-    },
-    forbidden: ["NE","SW"]
+    forbidden: ["NE","SW"],
+    remedies: {
+      S: [
+        "Keep the commode positioned so usage faces north or south, not east-west.",
+        "Keep the door closed when not in use.",
+        "Lighter wall colors (white, pink, or light shades) are a commonly cited mitigation for a south-zone toilet."
+      ],
+      N: [
+        "A partition or plant screen toward the adjacent NE zone is a common non-demolition mitigation.",
+        "Keep the door closed when not in use."
+      ],
+      NE: [
+        "A northeast yantra placed elsewhere in the NE zone of the home is a symbolic remedy cited in some sources.",
+        "A money plant or spider plant kept just outside the door (not inside the wet area) is a commonly cited air/energy remedy.",
+        "Keep this toilet especially clean, and keep the door closed at all times.",
+        "Burning camphor or an aromatic candle periodically is a commonly cited folk remedy."
+      ],
+      SW: [
+        "A tied red cloth/thread near the plumbing, or a small pyramid on the outside of the SW wall, are folk remedies cited in some sources.",
+        "A Rahu Yantra placed in this zone is a specific remedy some traditions cite for the southwest.",
+        "Keep the toilet door closed at all times and the space especially clean."
+      ]
+    }
   },
   LIVING_ROOM: {
     ideal: ["N","E","NE"],
-    acceptable: {
-      W: "Keep seating arranged so people tend to face north or east.",
-      S: "Keep this room open and uncluttered; place heavier furniture toward the south wall."
-    },
-    forbidden: []
+    forbidden: [],
+    remedies: {
+      W: [
+        "Keep seating arranged so people tend to face north or east.",
+      ],
+      S: [
+        "Keep this room open and uncluttered.",
+        "Place heavier furniture toward the south wall."
+      ],
+      SW: [
+        "Place the heaviest furniture (bookshelves, cabinets) against the southwest wall.",
+      ],
+      SE: [
+        "Keep electrical equipment (TV, electronics) in this zone rather than the room's NE corner."
+      ]
+    }
   },
   WATER_TANK: {
     ideal: ["NE"],
-    acceptable: {
-      N: "Acceptable secondary placement in many sources.",
-      E: "Acceptable secondary placement in many sources."
-    },
-    forbidden: ["SW","S"]
+    forbidden: ["SW","S"],
+    remedies: {
+      N: [
+        "Acceptable secondary placement in many sources without further mitigation."
+      ],
+      E: [
+        "Acceptable secondary placement in many sources without further mitigation."
+      ],
+      SW: [
+        "Keeping the tank smaller/lighter than one placed at SW would otherwise be is a commonly cited partial mitigation."
+      ],
+      S: [
+        "Painting or cladding the tank in light colors is a commonly cited partial mitigation."
+      ]
+    }
   }
 };
+
+// Mandatory safety/procedural cautions shown alongside ANY structural
+// last-resort suggestion — never optional, never trimmed.
+const STRUCTURAL_CAUTIONS = [
+  "Never remove or modify a load-bearing wall, plumbing stack, or electrical routing without a qualified structural engineer's assessment first — Vastu guidance does not override structural safety, ever.",
+  "Check whether your local authority requires a permit before this kind of work — moving a kitchen or bathroom's fixed layout is exactly the kind of change that often needs one (see the NL Rules tab if you're in the Netherlands).",
+  "Get at least one professional structural assessment and contractor quote before committing — this is expensive, disruptive, and hard to reverse.",
+  "Consider whether a smaller change (relocating just the fixtures, or converting part of a room) achieves the same directional correction without full demolition.",
+  "This is traditionally treated as a last resort, not a first response — commonly cited estimates suggest a large majority of placement issues are addressed through the remedies above without any structural change."
+];
+
+function structuralAlternativeText(elementLabel, idealDirections){
+  return "Traditional Vastu texts do describe relocating or rebuilding a room in " +
+    "its ideal direction for a severe or persistent dosha. If you've weighed the " +
+    "remedies above and still want to consider structural change: " +
+    idealDirections.join("/") + " is the direction most sources treat as ideal " +
+    "for a " + elementLabel.toLowerCase() + ", and relocating toward it is the " +
+    "traditional recommendation specifically for this placement.";
+}
 
 function evaluateMatrix(elementKey, direction8){
   const rule = MATRIX_RULES[elementKey];
   const label = HOME_ELEMENTS.find(e => e.key === elementKey).label;
+  const remediesForDirection = (rule.remedies && rule.remedies[direction8]) || [];
+
   if (rule.ideal.includes(direction8)) {
-    return { status: "IDEAL", explanation: direction8 + " is commonly cited as the ideal placement for the " + label.toLowerCase() + ".", remedy: null };
+    return {
+      status: "IDEAL",
+      explanation: direction8 + " is commonly cited as the ideal placement for the " + label.toLowerCase() + ".",
+      remedies: [],
+      structuralOption: null
+    };
   }
   if (rule.forbidden.includes(direction8)) {
-    return { status: "FORBIDDEN", explanation: direction8 + " is commonly flagged as a placement to avoid for the " + label.toLowerCase() + ".", remedy: "No commonly-cited non-demolition remedy fully offsets this; relocating the element, where feasible, is the typical recommendation." };
+    return {
+      status: "FORBIDDEN",
+      explanation: direction8 + " is commonly flagged as a placement to avoid for the " + label.toLowerCase() + ".",
+      remedies: remediesForDirection.length ? remediesForDirection :
+        ["Keep this zone especially clean and uncluttered as a baseline, even without a specific symbolic remedy on file for this exact direction."],
+      structuralOption: {
+        text: structuralAlternativeText(label, rule.ideal),
+        cautions: STRUCTURAL_CAUTIONS
+      }
+    };
   }
-  if (rule.acceptable[direction8]) {
-    return { status: "PERMISSIBLE_WITH_REMEDY", explanation: direction8 + " is not ideal for the " + label.toLowerCase() + ", but is commonly treated as workable with mitigation.", remedy: rule.acceptable[direction8] };
-  }
-  return { status: "PERMISSIBLE_WITH_REMEDY", explanation: direction8 + " is not specifically addressed as ideal or forbidden for the " + label.toLowerCase() + "; treat as neutral.", remedy: null };
+  return {
+    status: "PERMISSIBLE_WITH_REMEDY",
+    explanation: direction8 + " is not ideal for the " + label.toLowerCase() +
+      (remediesForDirection.length ? ", but is commonly treated as workable with mitigation." : "; treat as neutral."),
+    remedies: remediesForDirection,
+    structuralOption: null
+  };
 }
+
+function formatRemediesHtml(remedies, label){
+  if (!remedies || remedies.length === 0) return "";
+  const heading = label || (remedies.length > 1 ? "Remedy options:" : "Remedy:");
+  const items = remedies.map(r => "<li>" + r + "</li>").join("");
+  return "<p style=\"margin-bottom:2px;\"><strong>" + heading + "</strong></p>" +
+    "<ul style=\"margin:0 0 0 18px; padding:0;\">" + items + "</ul>";
+}
+
+// Collapsed by default (a native <details> element, no JS needed to
+// toggle it) — deliberately not shown alongside the ordinary remedies
+// above eye level, and never rendered without its full caution list.
+function formatStructuralOptionHtml(structuralOption){
+  if (!structuralOption) return "";
+  const cautionItems = structuralOption.cautions.map(c => "<li>" + c + "</li>").join("");
+  return '<details class="structural-details">' +
+    '<summary>Remedies not enough? Last-resort structural option</summary>' +
+    '<p>' + structuralOption.text + '</p>' +
+    '<p style="margin-bottom:2px;"><strong>Read this before considering it:</strong></p>' +
+    '<ul style="margin:0 0 0 18px; padding:0;">' + cautionItems + '</ul>' +
+    '</details>';
+}
+
+function renderMatrixSavedHome(){
+  const card = document.getElementById("matrixSavedHomeCard");
+  const body = document.getElementById("matrixSavedHomeBody");
+  const profile = loadHomeProfile();
+
+  if (!profile || !hasHomeProfile()) {
+    card.style.display = "none";
+    return;
+  }
+  card.style.display = "block";
+
+  let html = "";
+  if (profile.label) {
+    html += "<p><strong>" + profile.label + "</strong></p>";
+  }
+
+  if (profile.entranceBearing != null) {
+    html += "<div class=\"room-compliance-row\"><span>Main entrance — " +
+      sectorName(sectorIndex(profile.entranceBearing, 32), 32) + " (" +
+      Math.round(profile.entranceBearing) + "°)</span></div>";
+  } else {
+    html += "<p class=\"small\">Entrance direction not saved yet — save a live reading from the Dial tab.</p>";
+  }
+
+  if (profile.rooms && profile.rooms.length > 0) {
+    profile.rooms.forEach(r => {
+      const result = evaluateMatrix(r.type, r.dir8);
+      const badgeCls = result.status === "IDEAL" ? "badge-ideal" : (result.status === "FORBIDDEN" ? "badge-forbidden" : "badge-remedy");
+      const badgeLabel = result.status === "IDEAL" ? "Ideal" : (result.status === "FORBIDDEN" ? "Forbidden" : "Remedy");
+      const row = document.createElement("div");
+      row.className = "room-compliance-row";
+      row.style.flexWrap = "wrap";
+      row.innerHTML =
+        '<span>' + roomLabel(r.type) + ' — ' + (r.dir32 || r.dir8) + ' zone (' + Math.round(r.bearing) + '° from Brahmasthan)</span>' +
+        '<span class="badge ' + badgeCls + '">' + badgeLabel + '</span>' +
+        (result.remedies.length ? '<div style="width:100%; margin-top:4px;">' + formatRemediesHtml(result.remedies) + formatStructuralOptionHtml(result.structuralOption) + '</div>' : '');
+      html += row.outerHTML;
+    });
+  } else {
+    html += "<p class=\"small\">No rooms saved yet — lay them out and save from the Design tab.</p>";
+  }
+
+  body.innerHTML = html;
+}
+
+renderMatrixSavedHome();
 
 const matrixButtonsEl = document.getElementById("matrixButtons");
 HOME_ELEMENTS.forEach(el => {
@@ -1761,7 +2144,8 @@ HOME_ELEMENTS.forEach(el => {
     resultEl.innerHTML =
       '<div class="card ' + cls + '"><h2>' + el.label + ': ' + statusLabel + '</h2>' +
       '<p>' + r.explanation + '</p>' +
-      (r.remedy ? '<p>Remedy: ' + r.remedy + '</p>' : '') +
+      formatRemediesHtml(r.remedies) +
+      formatStructuralOptionHtml(r.structuralOption) +
       '</div>';
   });
   matrixButtonsEl.appendChild(btn);
@@ -2084,9 +2468,12 @@ function renderComplianceList(roomsList, centroid){
   });
 }
 
+let lastDesignCentroid = null;
+
 document.getElementById("buildDesignBtn").addEventListener("click", () => {
   if (rooms.length === 0) return;
   const centroid = buildingCentroid(rooms);
+  lastDesignCentroid = centroid;
   document.getElementById("viewToggle").style.display = "flex";
   document.getElementById("plan2dCard").style.display = "block";
   document.getElementById("plan3dCard").style.display = "none";
@@ -2094,6 +2481,25 @@ document.getElementById("buildDesignBtn").addEventListener("click", () => {
   drawPlan2d(rooms, centroid);
   buildThreeScene(rooms, centroid);
   renderComplianceList(rooms, centroid);
+});
+
+document.getElementById("saveRoomsBtn").addEventListener("click", () => {
+  if (!lastDesignCentroid) return;
+  const serialized = rooms
+    .filter(r => r.type !== "OTHER")
+    .map(r => {
+      const bearing = roomBearingFromCentroid(r, lastDesignCentroid);
+      return {
+        type: r.type, x: r.x, y: r.y, w: r.w, d: r.d,
+        dir8: sectorName(sectorIndex(bearing, 8), 8),
+        dir32: sectorName(sectorIndex(bearing, 32), 32),
+        bearing: bearing
+      };
+    });
+  updateHomeProfile({ rooms: serialized });
+  document.getElementById("saveRoomsStatus").textContent =
+    "Saved " + serialized.length + " room" + (serialized.length === 1 ? "" : "s") +
+    " to your home profile — see the full breakdown on the Matrix tab any time, no live reading needed.";
 });
 
 document.getElementById("show2dBtn").addEventListener("click", () => {
@@ -2489,7 +2895,8 @@ async function runDetectionOnce(){
       banner.innerHTML =
         '<strong>Detected: ' + roomLabel(inferred.room) + '</strong> (via ' + inferred.matchedClasses.join(", ") + ')<br>' +
         'Facing ' + dir8 + ' — ' + statusLabel + '. ' + r.explanation +
-        (r.remedy ? ' <em>Remedy: ' + r.remedy + '</em>' : '');
+        formatRemediesHtml(r.remedies, r.remedies.length > 1 ? "Remedy options:" : "Remedy:") +
+        formatStructuralOptionHtml(r.structuralOption);
     } else if (inferred) {
       banner.textContent = "Detected: " + roomLabel(inferred.room) + " (via " + inferred.matchedClasses.join(", ") + ") — recalibrate for a direction-based suggestion.";
     } else {
