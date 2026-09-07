@@ -154,13 +154,14 @@
   #lensLabels span.current { color: #ffe066; font-size: 13px; }
   #lensInfo {
     position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%);
-    background: rgba(10,8,16,0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--glass-border);
+    background: rgba(10,8,16,0.72); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.18);
     border-radius: 14px; padding: 10px 16px; text-align: center; max-width: 88%;
+    color: #fff;
   }
-  #lensInfo .heading { font-size: 17px; font-weight: 700; }
-  #lensInfo .vedic { font-size: 12.5px; color: var(--text-dim); margin-top: 1px; }
-  #lensInfo .note { font-size: 10.5px; color: var(--text-dim); margin-top: 4px; }
+  #lensInfo .heading { font-size: 17px; font-weight: 700; color: #fff; }
+  #lensInfo .vedic { font-size: 12.5px; color: rgba(255,255,255,0.85); margin-top: 1px; }
+  #lensInfo .note { font-size: 10.5px; color: rgba(255,255,255,0.7); margin-top: 4px; }
   #lensPermCard { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; }
 
   #lensTopBar {
@@ -312,9 +313,15 @@
         <p id="boundaryText"></p>
       </div>
 
-      <div style="display:flex; justify-content:center; margin-bottom:6px;">
+      <div style="display:flex; justify-content:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
         <button id="dialCameraToggleBtn" class="lens-chip" style="box-shadow:none;">Camera background: Off</button>
+        <button id="headingFlipBtn" class="lens-chip" style="box-shadow:none;">Flip 180°: Off</button>
       </div>
+      <p class="small" style="text-align:center; margin:0 0 6px;">If your readings consistently point the
+      opposite way from reality (e.g. facing your actual front door reads
+      as the direction directly behind you), tap Flip 180° — this
+      corrects a known cross-browser inconsistency in how phones report
+      compass heading, and it's saved for next time.</p>
 
       <div id="dial-wrap">
         <video id="dialVideo" autoplay playsinline muted style="display:none; position:absolute; inset:0; width:100%; height:100%; object-fit:cover; border-radius:20px;"></video>
@@ -405,6 +412,25 @@
         <p>Pick how you want to describe your plot's boundary. The
         centroid is exact math for the shape you give it — the only
         source of error is how closely that shape matches the real plot.</p>
+      </div>
+
+      <div class="card">
+        <h2>Verify a Dutch address (PDOK, free &amp; official)</h2>
+        <p>PDOK Locatieserver is the Dutch government's own free, open
+        address-lookup service (Kadaster/BAG data) — not a scraped
+        listing site, no terms-of-use conflict, no API key needed. It
+        confirms an address exists and gives its official coordinate.
+        It does <strong>not</strong> return a full building outline
+        (that needs a separate, key-gated Kadaster API this app doesn't
+        embed), so this verifies and locates an address — it doesn't
+        replace measuring or entering your plot's actual shape above.</p>
+        <input type="text" id="pdokAddressInput" placeholder="e.g. Museumplein 6, Amsterdam">
+        <button class="ghost" id="pdokLookupBtn">Look up address</button>
+        <p class="small" id="pdokStatus" style="margin-top:4px;"></p>
+        <div id="pdokResult" style="display:none;">
+          <p id="pdokResultText"></p>
+          <button class="ghost" id="pdokSaveBtn">Save this address to my home profile</button>
+        </div>
       </div>
 
       <div class="segrow" id="shapeSeg">
@@ -1218,6 +1244,23 @@ document.getElementById("dialCameraToggleBtn").addEventListener("click", () => {
   syncCamera();
 });
 
+const HEADING_OFFSET_KEY = "vastulens_heading_offset";
+let manualHeadingOffset = 0;
+try {
+  const savedOffset = parseFloat(localStorage.getItem(HEADING_OFFSET_KEY));
+  if (!isNaN(savedOffset)) manualHeadingOffset = savedOffset;
+} catch (e) { /* localStorage unavailable — offset just stays 0 for this session */ }
+
+function toggleHeadingFlip(){
+  manualHeadingOffset = manualHeadingOffset === 180 ? 0 : 180;
+  try { localStorage.setItem(HEADING_OFFSET_KEY, String(manualHeadingOffset)); } catch (e) { /* not fatal — just won't persist across reloads */ }
+  const btn = document.getElementById("headingFlipBtn");
+  if (btn) btn.textContent = manualHeadingOffset === 180 ? "Flip 180°: On" : "Flip 180°: Off";
+}
+
+document.getElementById("headingFlipBtn").addEventListener("click", toggleHeadingFlip);
+document.getElementById("headingFlipBtn").textContent = manualHeadingOffset === 180 ? "Flip 180°: On" : "Flip 180°: Off";
+
 // Generic wiring for a "save this direction for area X" control — used
 // on the Dial and Matrix tabs (the Lens tab uses its own richer
 // tag-panel UI, wired separately, but saves through the same
@@ -1288,12 +1331,24 @@ function startSensors(){
   const handler = (e) => {
     let heading = null;
     if (typeof e.webkitCompassHeading === "number") {
-      heading = e.webkitCompassHeading; // iOS Safari: already magnetic-north-relative
+      heading = e.webkitCompassHeading; // iOS Safari: already true-compass heading (clockwise from north)
     } else if (e.alpha !== null && (e.absolute === true || "ondeviceorientationabsolute" in window === false)) {
-      heading = normalize(360 - e.alpha); // Android: alpha increases counter-clockwise
+      // A user reported entrance direction reading consistently opposite
+      // (180deg off). Investigated rather than guessed: the W3C spec
+      // text defines alpha as counter-clockwise device-frame rotation,
+      // but real cross-browser measurement studies of actual Android
+      // implementations found alpha is reported directly as compass
+      // heading (clockwise from north) for the *absolute* event — no
+      // extra inversion needed. This app previously applied an extra
+      // (360 - alpha) flip on top of that, which double-inverts the
+      // reading. Fixed to use alpha directly. This API's behavior has
+      // genuinely varied across browsers/OS versions for over a decade,
+      // so if a specific device still reads backwards, use "Flip 180°"
+      // below rather than assume either direction is automatically right.
+      heading = normalize(e.alpha);
     }
     if (heading === null) return;
-    pushHeadingReading(heading);
+    pushHeadingReading(normalize(heading + manualHeadingOffset));
   };
 
   if ("ondeviceorientationabsolute" in window) {
@@ -1689,6 +1744,72 @@ function unprojectPoint(lat0, lon0, x, y){
   return { lat: lat0 + y/mPerDegLat, lon: lon0 + x/mPerDegLon };
 }
 
+/**
+ * Parses the WKT "POINT(lon lat)" string format PDOK's Locatieserver
+ * returns in its centroide_ll field. Returns {lat, lon} or null if the
+ * string isn't in the expected shape — callers must treat null as "no
+ * usable coordinate", never fabricate one.
+ */
+function parseWktPoint(wkt){
+  if (!wkt) return null;
+  const match = /POINT\s*\(\s*(-?[\d.]+)\s+(-?[\d.]+)\s*\)/i.exec(wkt);
+  if (!match) return null;
+  const lon = parseFloat(match[1]);
+  const lat = parseFloat(match[2]);
+  if (isNaN(lon) || isNaN(lat)) return null;
+  return { lat: lat, lon: lon };
+}
+
+/* ---------- PDOK address verification (free, open, official Dutch government data) ---------- */
+let lastPdokResult = null;
+
+document.getElementById("pdokLookupBtn").addEventListener("click", async () => {
+  const query = document.getElementById("pdokAddressInput").value.trim();
+  const statusEl = document.getElementById("pdokStatus");
+  const resultEl = document.getElementById("pdokResult");
+  resultEl.style.display = "none";
+  lastPdokResult = null;
+
+  if (!query) {
+    statusEl.textContent = "Enter an address first.";
+    return;
+  }
+  statusEl.textContent = "Looking up…";
+
+  try {
+    const url = "https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?" +
+      "q=" + encodeURIComponent(query) +
+      "&fq=type:adres&fl=weergavenaam,centroide_ll&rows=1&wt=json";
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const data = await response.json();
+    const doc = data && data.response && data.response.docs && data.response.docs[0];
+    if (!doc) {
+      statusEl.textContent = "No match found for that address in PDOK's Dutch address registry.";
+      return;
+    }
+    const point = parseWktPoint(doc.centroide_ll);
+    if (!point) {
+      statusEl.textContent = "Found a match, but couldn't read its coordinate.";
+      return;
+    }
+    lastPdokResult = { label: doc.weergavenaam, lat: point.lat, lon: point.lon };
+    statusEl.textContent = "";
+    document.getElementById("pdokResultText").textContent =
+      doc.weergavenaam + " — " + point.lat.toFixed(6) + ", " + point.lon.toFixed(6);
+    resultEl.style.display = "block";
+  } catch (e) {
+    statusEl.textContent = "Could not reach PDOK right now (needs an internet connection). This is a live government API call, not a scraped/cached result — try again in a moment.";
+  }
+});
+
+document.getElementById("pdokSaveBtn").addEventListener("click", () => {
+  if (!lastPdokResult) return;
+  updateHomeProfile({ verifiedAddress: lastPdokResult, label: lastPdokResult.label });
+  document.getElementById("pdokStatus").textContent = "Saved to your home profile.";
+  renderSavedHomeCard();
+});
+
 /* ---------- Brahmasthan: UI wiring ---------- */
 document.getElementById("shapeSeg").addEventListener("click", (e) => {
   if (e.target.tagName !== "BUTTON") return;
@@ -1766,6 +1887,7 @@ function defaultHomeProfile(){
     entranceBearing: null,   // degrees — kept for backward compatibility; ENTRANCE is also saveable via areaDirections now
     rooms: [],               // [{type, x, y, w, d, dir8, dir32, bearing}], from the Design tab (has full geometry)
     areaDirections: {},      // { [areaTypeKey]: {bearing, dir8, dir32, savedAt} } — simple bearing-only saves from any tab (Dial/Lens/Matrix), no geometry needed
+    verifiedAddress: null,   // {label, lat, lon} — from the free/open PDOK Locatieserver lookup, a confirmed official address+coordinate (not a full building outline)
     savedAt: null
   };
 }
@@ -1834,7 +1956,7 @@ function updateHomeProfile(partial){
 function hasHomeProfile(){
   const p = loadHomeProfile();
   return !!(p && (p.brahmasthan || p.entranceBearing || (p.rooms && p.rooms.length) ||
-    (p.areaDirections && Object.keys(p.areaDirections).length)));
+    (p.areaDirections && Object.keys(p.areaDirections).length) || p.verifiedAddress));
 }
 
 let lastBrahmaResult = null;
@@ -2020,6 +2142,10 @@ function renderSavedHomeCard(){
   const body = document.getElementById("savedHomeBody");
   let html = "";
   html += "<p><strong>" + (profile.label || "(unlabeled)") + "</strong></p>";
+  if (profile.verifiedAddress) {
+    html += "<p>Verified address (PDOK): " + profile.verifiedAddress.label + " (" +
+      profile.verifiedAddress.lat.toFixed(6) + ", " + profile.verifiedAddress.lon.toFixed(6) + ")</p>";
+  }
   html += "<p>Brahmasthan: " + (profile.brahmasthan ?
     profile.brahmasthan.x.toFixed(2) + "m, " + profile.brahmasthan.y.toFixed(2) + "m from reference corner" :
     "not saved yet — calculate one above") + "</p>";
@@ -2088,6 +2214,10 @@ const MATRIX_RULES = {
         "A small mirror facing inward just inside the doorway is a commonly cited folk remedy (not a structural fix).",
         "Paint or decorate the entrance area in white or light tones."
       ],
+      NW: [
+        "Wind chimes at or near this entrance are a commonly cited remedy tied to the northwest's air element.",
+        "Keep the entrance area well-ventilated; considered a workable secondary entrance in many sources without further mitigation."
+      ],
       SW: [
         "A solid, heavier door with a raised threshold, kept as a secondary rather than primary entrance if you have another option.",
         "A Rahu Yantra placed near the entrance is a specific yantra some traditions associate with this direction.",
@@ -2109,9 +2239,21 @@ const MATRIX_RULES = {
     ideal: ["SE"],
     forbidden: ["NE","SW"],
     remedies: {
+      N: [
+        "Keep this zone tidy and uncluttered — the north is associated with wealth flow, so avoid heavy storage or clutter building up around the cooktop.",
+        "A small copper item kept nearby is a commonly cited accent for a north-zone kitchen."
+      ],
+      S: [
+        "Face east while cooking regardless of the room's own zone.",
+        "Keep ventilation strong; commonly treated as workable in many sources without further mitigation."
+      ],
       NW: [
         "Keep the cooktop positioned so the cook faces east while cooking.",
         "Considered a workable secondary choice in many sources without further mitigation needed."
+      ],
+      W: [
+        "Face east while cooking regardless of the room's own zone.",
+        "Keep the space uncluttered; commonly treated as workable with no further mitigation needed."
       ],
       E: [
         "Keep the cooktop away from the exact NE corner of the room.",
@@ -2133,12 +2275,24 @@ const MATRIX_RULES = {
     ideal: ["SW"],
     forbidden: ["NE","SE"],
     remedies: {
+      N: [
+        "Keep this zone tidy and free of clutter or heavy storage under the bed — the north is associated with wealth flow.",
+        "Considered workable in many sources with no further mitigation beyond that."
+      ],
+      E: [
+        "Heavier curtains to moderate early morning light are a commonly cited comfort adjustment for an east-zone bedroom.",
+        "Calming, cooler colors are a commonly cited mitigation here."
+      ],
       S: [
         "Keep the bed headboard against the south or west wall.",
         "Commonly treated as acceptable without further mitigation in many sources."
       ],
       W: [
         "Keep the bed headboard against the west wall."
+      ],
+      NW: [
+        "Heavier, grounding furniture is a commonly cited mitigation for a northwest bedroom, to offset the zone's airy/restless association.",
+        "Often specifically cited as well suited to a guest room rather than the primary bedroom."
       ],
       NE: [
         "Keep this zone especially uncluttered and used minimally for sleeping if another bedroom is available.",
@@ -2156,10 +2310,20 @@ const MATRIX_RULES = {
     ideal: ["NW","W"],
     forbidden: ["NE","SW"],
     remedies: {
+      E: [
+        "Keep the space well-ventilated with natural light where possible.",
+        "Keep the door closed when not in use; commonly treated as workable with that basic care."
+      ],
       S: [
         "Keep the commode positioned so usage faces north or south, not east-west.",
         "Keep the door closed when not in use.",
         "Lighter wall colors (white, pink, or light shades) are a commonly cited mitigation for a south-zone toilet."
+      ],
+      SE: [
+        "A strip of red cloth or red tape on the door or the adjoining wall is a specific folk remedy commonly cited for a southeast toilet, symbolically containing the water-versus-fire elemental clash between a wet area and the southeast's fire element.",
+        "Keep a working exhaust fan running here more consistently than in other zones.",
+        "Avoid sharing a wall directly with the kitchen's cooktop side if at all possible.",
+        "Keep the door closed when not in use, and the space especially clean and dry."
       ],
       N: [
         "A partition or plant screen toward the adjacent NE zone is a common non-demolition mitigation.",
@@ -2185,6 +2349,10 @@ const MATRIX_RULES = {
       W: [
         "Keep seating arranged so people tend to face north or east.",
       ],
+      NW: [
+        "Keep this zone open for movement and circulation, with lighter rather than heavy furniture — fitting for the northwest's air element.",
+        "Often specifically cited as well suited to a guest-oriented living/sitting area."
+      ],
       S: [
         "Keep this room open and uncluttered.",
         "Place heavier furniture toward the south wall."
@@ -2197,47 +2365,25 @@ const MATRIX_RULES = {
       ]
     }
   },
-  WATER_TANK: {
-    ideal: ["NE"],
-    forbidden: ["SW","S"],
-    remedies: {
-      N: [
-        "Acceptable secondary placement in many sources without further mitigation."
-      ],
-      E: [
-        "Acceptable secondary placement in many sources without further mitigation."
-      ],
-      SW: [
-        "Keeping the tank smaller/lighter than one placed at SW would otherwise be is a commonly cited partial mitigation."
-      ],
-      S: [
-        "Painting or cladding the tank in light colors is a commonly cited partial mitigation."
-      ]
-    }
-  },
-  BEDROOM_2: {
-    ideal: ["W"],
-    forbidden: ["NE","SE"],
-    remedies: {
-      N: ["Commonly treated as acceptable for a secondary bedroom without further mitigation."],
-      NW: ["Often specifically cited as suited to a guest bedroom; workable without further mitigation."],
-      S: ["Keep the bed headboard against the south wall.", "Commonly treated as acceptable in many sources."],
-      NE: [
-        "Keep this room especially uncluttered; a northeast yantra placed in the zone is a symbolic remedy cited in some sources.",
-        "Consider using this room for storage or study rather than regular sleeping if another room is available."
-      ],
-      SE: [
-        "Soft, cooling colors (blues, greens) are a commonly cited mitigation for a southeast bedroom.",
-        "Keep electrical/heat appliances out of this room."
-      ]
-    }
-  },
   POOJA_ROOM: {
     ideal: ["NE"],
     forbidden: ["SW","S"],
     remedies: {
       N: ["Acceptable secondary placement in many sources without further mitigation."],
       E: ["Acceptable secondary placement in many sources without further mitigation."],
+      SE: [
+        "Face the idols/images toward the east or north while praying, regardless of the room's own zone.",
+        "A small oil lamp (diya) is itself a fire-element item some sources treat as naturally compatible with a southeast placement, even though the room as a whole is better suited to NE.",
+        "Keep the space simply furnished and very clean to partially offset the placement."
+      ],
+      W: [
+        "Face the idols/images toward the east or north while praying, regardless of the room's own zone.",
+        "Commonly treated as workable with that adjustment alone."
+      ],
+      NW: [
+        "Face the idols/images toward the east or north while praying, regardless of the room's own zone.",
+        "Often better suited to a small altar corner than a dedicated room in this zone."
+      ],
       SW: [
         "Keep this space especially clean, well-lit, and simply furnished to partially offset the placement.",
         "Relocating a shrine/altar corner elsewhere, even within the same room, toward NE is a commonly cited partial mitigation."
@@ -2275,6 +2421,10 @@ const MATRIX_RULES = {
       W: [
         "Commonly cited as a workable secondary zone without further mitigation."
       ],
+      S: [
+        "A tied red cloth or thread nearby is a folk remedy cited in some sources for zones where a water-using appliance sits in a fire-associated direction, paralleling the same reasoning used for a southeast toilet.",
+        "Keep the unit's footprint small and well-ventilated in this zone."
+      ],
       SW: [
         "This zone is traditionally meant to carry stability and heavier fixed placement, not repeated water movement/discharge — keep the unit's footprint small if placed here.",
         "Relocating to N or E, where feasible, aligns better with the water-favorable reasoning for this appliance."
@@ -2291,6 +2441,10 @@ const MATRIX_RULES = {
     remedies: {
       S: ["Heavier plantings (trees, tall shrubs) are commonly recommended here rather than in the north/east."],
       W: ["Heavier plantings are commonly recommended here rather than in the north/east."],
+      NW: [
+        "Lighter, airier landscaping (ornamental grasses, wind chimes, features that move in the breeze) fits the northwest's air element.",
+        "Commonly treated as workable without further mitigation beyond that."
+      ],
       SE: ["Avoid a water feature directly in this zone; fire/water together here is a commonly cited conflict."],
       SW: [
         "Keep any southwest greenery low and light rather than a full open garden — this zone is traditionally meant to carry the heaviest mass of the plot, not open space.",
@@ -2304,10 +2458,67 @@ const MATRIX_RULES = {
     remedies: {
       S: ["Heavier structures (a shed, tall trees) are commonly recommended here rather than in the north/east."],
       W: ["Heavier structures are commonly recommended here rather than in the north/east."],
+      NW: [
+        "Lighter, airier features (a pergola rather than a solid shed, for example) fit the northwest's air element.",
+        "Commonly treated as workable without further mitigation beyond that."
+      ],
       SE: ["Keep this zone tidy if it's near the kitchen's exhaust/fire-adjacent side of the house."],
       SW: [
         "Keep this zone the most built-up/heaviest part of the backyard (a shed, storage, or a raised deck) rather than fully open space.",
         "A rock garden or lower-maintenance area is a commonly cited partial mitigation versus a full open lawn here."
+      ]
+    }
+  },
+  WATER_TANK: {
+    ideal: ["NE"],
+    forbidden: ["SW","S"],
+    remedies: {
+      N: [
+        "Acceptable secondary placement in many sources without further mitigation."
+      ],
+      E: [
+        "Acceptable secondary placement in many sources without further mitigation."
+      ],
+      SE: [
+        "Shading or insulating the tank is a commonly cited practical mitigation for a water-holding fixture sitting in the southeast's fire-associated zone.",
+        "Relocating toward NE, where feasible, aligns better with the water-element reasoning for this fixture."
+      ],
+      W: [
+        "Acceptable secondary placement in many sources without further mitigation."
+      ],
+      NW: [
+        "Acceptable secondary placement in many sources without further mitigation, though NE remains the more commonly cited ideal."
+      ],
+      SW: [
+        "Keeping the tank smaller/lighter than one placed at SW would otherwise be is a commonly cited partial mitigation."
+      ],
+      S: [
+        "Painting or cladding the tank in light colors is a commonly cited partial mitigation."
+      ]
+    }
+  },
+  BEDROOM_2: {
+    ideal: ["W"],
+    forbidden: ["NE","SE"],
+    remedies: {
+      N: ["Commonly treated as acceptable for a secondary bedroom without further mitigation."],
+      E: [
+        "Heavier curtains to moderate early morning light are a commonly cited comfort adjustment.",
+        "Often specifically cited as suited to an early-riser's or child's room in this zone."
+      ],
+      NW: ["Often specifically cited as suited to a guest bedroom; workable without further mitigation."],
+      S: ["Keep the bed headboard against the south wall.", "Commonly treated as acceptable in many sources."],
+      SW: [
+        "Heavier, grounding furniture is a commonly cited fit for this zone's earth element, even for a secondary bedroom rather than the primary one.",
+        "Commonly treated as workable if the primary bedroom is placed elsewhere."
+      ],
+      NE: [
+        "Keep this room especially uncluttered; a northeast yantra placed in the zone is a symbolic remedy cited in some sources.",
+        "Consider using this room for storage or study rather than regular sleeping if another room is available."
+      ],
+      SE: [
+        "Soft, cooling colors (blues, greens) are a commonly cited mitigation for a southeast bedroom.",
+        "Keep electrical/heat appliances out of this room."
       ]
     }
   },
@@ -2317,6 +2528,15 @@ const MATRIX_RULES = {
     lowConfidence: true,
     remedies: {
       N: ["Acceptable secondary placement, consistent with treating this as a water-element device."],
+      E: ["Acceptable secondary placement in many sources discussing similar outdoor equipment, without further mitigation."],
+      S: [
+        "Some shading/clearance from direct sun is a commonly suggested practical mitigation for outdoor equipment in this zone, independent of the Vastu reasoning.",
+        "Keep the unit's footprint modest here rather than expanding it further into this zone."
+      ],
+      SW: [
+        "Consistent with how a water-associated fixture interacts with the southwest's earth/stability character (the same reasoning behind avoiding a water tank in this zone), keeping the unit's footprint modest here is a reasonable precaution.",
+        "Commonly treated as workable in practice given this is fundamentally a modern-equipment placement question, not a classical one."
+      ],
       W: ["Considered a workable secondary position in modern sources discussing similar outdoor electrical/climate equipment."],
       NW: [
         "Some reasoning would instead favor this zone via the northwest's air element, since the outdoor unit's function is drawing in outside air — there's a genuine interpretive split on which element should govern this specific device, air (its energy source) or water (its output, since a Dutch heat pump is predominantly an air-to-water system heating the home's water-based central heating and hot water)."
@@ -2622,6 +2842,46 @@ function inferRoomFromDetections(detectedClasses){
 
   matches.sort((a, b) => b.matched.length - a.matched.length);
   return { room: matches[0].room, matchedClasses: matches[0].matched };
+}
+
+const DETECTION_CONFIRM_STREAK = 2; // consecutive agreeing frames required before confirming a NEW room (reduces flicker between misreads)
+const DETECTION_MEMORY_MS = 12000;  // how long a confirmed detection stays shown after the object drops out of view
+
+function defaultDetectionMemory(){
+  return { pendingRoom: null, pendingStreak: 0, confirmed: null };
+}
+
+/**
+ * Pure state-transition function for the AI detection "memory" —
+ * given this frame's inferred room (or null if nothing recognized) and
+ * the previous memory state, returns the new state. Two responsibilities:
+ * (1) a room must be seen DETECTION_CONFIRM_STREAK times in a row before
+ * it's "confirmed" (stops single-frame misreads from flickering the
+ * display between different guesses), and (2) once confirmed, it stays
+ * shown for DETECTION_MEMORY_MS even through frames where nothing was
+ * detected (stops the object briefly leaving frame from blanking the
+ * result). Takes nowMs explicitly so it's testable without real timers.
+ */
+function updateDetectionMemory(inferredRoomKey, matchedClasses, memoryState, nowMs){
+  const state = memoryState ? Object.assign({}, memoryState) : defaultDetectionMemory();
+
+  if (inferredRoomKey) {
+    if (state.pendingRoom === inferredRoomKey) {
+      state.pendingStreak = state.pendingStreak + 1;
+    } else {
+      state.pendingRoom = inferredRoomKey;
+      state.pendingStreak = 1;
+    }
+    if (state.pendingStreak >= DETECTION_CONFIRM_STREAK) {
+      state.confirmed = { room: inferredRoomKey, matchedClasses: matchedClasses, confirmedAt: nowMs };
+    }
+  }
+
+  if (state.confirmed && (nowMs - state.confirmed.confirmedAt) > DETECTION_MEMORY_MS) {
+    state.confirmed = null;
+  }
+
+  return state;
 }
 
 
@@ -3550,6 +3810,8 @@ function loadScript(src){
   });
 }
 
+let detectionMemory = defaultDetectionMemory();
+
 async function runDetectionOnce(){
   if (!aiEnabled || !cocoModel || !cameraStarted) return;
   try {
@@ -3558,25 +3820,47 @@ async function runDetectionOnce(){
       .filter(p => p.score > 0.5)
       .map(p => p.class);
     const inferred = inferRoomFromDetections(classes);
-    const banner = document.getElementById("detectionBanner");
-    banner.style.display = "block";
-    if (inferred && canAnalyze()) {
-      const dir8 = sectorName(sectorIndex(currentHeading(), 8), 8);
-      const r = evaluateMatrix(inferred.room, dir8);
-      const statusLabel = r.status === "IDEAL" ? "Ideal" : (r.status === "FORBIDDEN" ? "Forbidden" : "Permissible with remedy");
-      banner.innerHTML =
-        '<strong>Detected: ' + roomLabel(inferred.room) + '</strong> (via ' + inferred.matchedClasses.join(", ") + ')<br>' +
-        'Facing ' + dir8 + ' — ' + statusLabel + '. ' + r.explanation +
-        formatRemediesHtml(r.remedies, r.remedies.length > 1 ? "Remedy options:" : "Remedy:") +
-        formatStructuralOptionHtml(r.structuralOption);
-    } else if (inferred) {
-      banner.textContent = "Detected: " + roomLabel(inferred.room) + " (via " + inferred.matchedClasses.join(", ") + ") — recalibrate for a direction-based suggestion.";
-    } else {
-      banner.textContent = "AI room detection on — no recognizable kitchen/bathroom/bedroom/living-room objects in view right now.";
-    }
+
+    detectionMemory = updateDetectionMemory(
+      inferred ? inferred.room : null,
+      inferred ? inferred.matchedClasses : null,
+      detectionMemory,
+      Date.now()
+    );
+
+    renderDetectionBanner();
   } catch (e) {
     // Detection hiccup on a single frame — not worth interrupting the
-    // user over; the next scheduled run will just try again.
+    // user over; the next scheduled run will just try again. The
+    // confirmed detection (if any) stays shown via detectionMemory.
+    renderDetectionBanner();
+  }
+}
+
+function renderDetectionBanner(){
+  const banner = document.getElementById("detectionBanner");
+  banner.style.display = "block";
+  const confirmed = detectionMemory.confirmed;
+
+  if (!confirmed) {
+    banner.textContent = "AI room detection on — no recognizable kitchen/bathroom/bedroom/living-room objects confirmed recently.";
+    return;
+  }
+
+  const ageSec = Math.round((Date.now() - confirmed.confirmedAt) / 1000);
+  const freshnessNote = ageSec < 3 ? "" : " (last confirmed " + ageSec + "s ago — still showing)";
+
+  if (canAnalyze()) {
+    const dir8 = sectorName(sectorIndex(currentHeading(), 8), 8);
+    const r = evaluateMatrix(confirmed.room, dir8);
+    const statusLabel = r.status === "IDEAL" ? "Ideal" : (r.status === "FORBIDDEN" ? "Forbidden" : "Permissible with remedy");
+    banner.innerHTML =
+      '<strong>Detected: ' + roomLabel(confirmed.room) + '</strong> (via ' + confirmed.matchedClasses.join(", ") + ')' + freshnessNote + '<br>' +
+      'Facing ' + dir8 + ' — ' + statusLabel + '. ' + r.explanation +
+      formatRemediesHtml(r.remedies, r.remedies.length > 1 ? "Remedy options:" : "Remedy:") +
+      formatStructuralOptionHtml(r.structuralOption);
+  } else {
+    banner.textContent = "Detected: " + roomLabel(confirmed.room) + freshnessNote + " — recalibrate for a direction-based suggestion.";
   }
 }
 
@@ -3589,6 +3873,7 @@ document.getElementById("aiToggleBtn").addEventListener("click", async () => {
     detectionTimer = setInterval(runDetectionOnce, 1500);
   } else {
     if (detectionTimer) { clearInterval(detectionTimer); detectionTimer = null; }
+    detectionMemory = defaultDetectionMemory();
     document.getElementById("detectionBanner").style.display = "none";
   }
 });
