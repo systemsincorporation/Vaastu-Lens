@@ -211,6 +211,12 @@
   #view3d { width: 100%; height: 280px; border-radius: 14px; overflow: hidden; border: 1px solid var(--glass-border); background: #050308; }
   #view3d canvas { width: 100% !important; height: 100% !important; display: block; touch-action: none; }
   .room-compliance-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--glass-border); font-size: 12.5px; }
+  .remedy-check-row {
+    display: flex; align-items: flex-start; gap: 8px; padding: 3px 0; cursor: pointer;
+    font-size: 12.5px; color: var(--text);
+  }
+  .remedy-check-row input { margin-top: 2px; flex-shrink: 0; }
+  .remedy-check-row input:checked + span { text-decoration: line-through; color: var(--text-dim); }
   .room-compliance-row:last-child { border-bottom: none; }
   .badge { padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 700; }
   .badge-ideal { background: rgba(125,196,255,0.30); color: #0b4a8f; }
@@ -608,6 +614,16 @@
           <button class="ghost" id="floorPlanToggleBtn">Show behind plan: Off</button>
           <button class="ghost" id="floorPlanClearBtn">Remove this floor</button>
         </div>
+        <p class="small" style="margin-top:8px; margin-bottom:4px;">If the detected directions come out
+        wrong (e.g. the plan wasn't drawn north-up, or was scanned
+        upside down), correct the image's own orientation here — this
+        also re-derives the detected directions to match, not just the
+        picture:</p>
+        <div class="row">
+          <button class="ghost" id="rotateBtn">Rotate 90°</button>
+          <button class="ghost" id="flipHBtn">Flip ↔</button>
+          <button class="ghost" id="flipVBtn">Flip ↕</button>
+        </div>
         <button class="ghost" id="runOcrBtn" style="margin-top:8px;">Read floor plan text (OCR)</button>
         <p class="small" id="ocrStatus" style="margin-top:4px;"></p>
         <div id="ocrRoomsList"></div>
@@ -721,6 +737,20 @@
         covers the steps, what all 32 direction names actually mean,
         and how to handle a multi-floor house without re-measuring
         every level.</p>
+      </div>
+
+      <div class="card">
+        <h2>What should be improved?</h2>
+        <p>This is a personal notes log, saved on your device — it
+        does not send anything anywhere, and nothing in this app can
+        rewrite its own code from here. There's no live AI connected
+        to this deployed page. Use this to jot down what you'd want
+        changed or fixed, then bring the note with you the next time
+        you (or whoever built this for you) work on the app itself —
+        that's the actual way changes happen.</p>
+        <textarea id="feedbackNoteText" rows="3" style="width:100%; background:rgba(26,26,46,0.05); border:1px solid var(--glass-border); border-radius:10px; padding:9px; font-size:13px; font-family:inherit;" placeholder="e.g. 'Toilet direction detection seemed off on the 2nd floor plan'"></textarea>
+        <button class="ghost" id="saveFeedbackNoteBtn" style="margin-top:8px;">Save note</button>
+        <div id="feedbackNotesList" style="margin-top:8px;"></div>
       </div>
 
       <div class="card">
@@ -950,6 +980,29 @@ function mapRoomLabelToType(text){
     if (c.re.test(t)) return c.key;
   }
   return null;
+}
+
+/**
+ * Recognizes a room-dimension label as printed on a floor plan image —
+ * e.g. "3,20", "3.20m", "12,5 m²", "320cm". Returns {type:'length',
+ * valueMeters} or {type:'area', valueM2}, or null if the text doesn't
+ * look like a dimension at all. Deliberately narrow (a bare decimal
+ * number optionally followed by a unit) so it doesn't false-positive
+ * on unrelated numbers like a house number or a date printed elsewhere
+ * on the plan.
+ */
+function parseDimensionText(text){
+  if (!text) return null;
+  const match = /^(\d{1,4}(?:[.,](\d{1,2}))?)\s*(m2|m²|cm|m)?$/i.exec(text.trim());
+  if (!match) return null;
+  const hasDecimal = !!match[2];
+  const unit = (match[3] || "").toLowerCase();
+  if (!hasDecimal && !unit) return null; // bare whole number is ambiguous (could be a house number, page number, etc.)
+  let value = parseFloat(match[1].replace(",", "."));
+  if (isNaN(value) || value <= 0) return null;
+  if (unit === "cm") value = value / 100;
+  if (unit === "m2" || unit === "m²") return { type: "area", valueM2: value };
+  return { type: "length", valueMeters: value };
 }
 
 function renderCompassGlossary(){
@@ -1888,6 +1941,7 @@ function defaultHomeProfile(){
     rooms: [],               // [{type, x, y, w, d, dir8, dir32, bearing}], from the Design tab (has full geometry)
     areaDirections: {},      // { [areaTypeKey]: {bearing, dir8, dir32, savedAt} } — simple bearing-only saves from any tab (Dial/Lens/Matrix), no geometry needed
     verifiedAddress: null,   // {label, lat, lon} — from the free/open PDOK Locatieserver lookup, a confirmed official address+coordinate (not a full building outline)
+    feedbackNotes: [],       // [{text, savedAt}] — personal local notes on what to improve; never sent anywhere, no automatic effect
     savedAt: null
   };
 }
@@ -1958,6 +2012,60 @@ function hasHomeProfile(){
   return !!(p && (p.brahmasthan || p.entranceBearing || (p.rooms && p.rooms.length) ||
     (p.areaDirections && Object.keys(p.areaDirections).length) || p.verifiedAddress));
 }
+
+/* ---------- Feedback notes: a personal local log, never sent anywhere,
+   no automatic effect on the app — see the Guide tab card for the
+   full explanation of why this is a notes log and not a live AI. ---------- */
+function saveFeedbackNote(text){
+  const profile = loadHomeProfile() || defaultHomeProfile();
+  const notes = (profile.feedbackNotes || []).concat([{ text: text, savedAt: Date.now() }]);
+  return updateHomeProfile({ feedbackNotes: notes });
+}
+
+function removeFeedbackNote(index){
+  const profile = loadHomeProfile() || defaultHomeProfile();
+  const notes = (profile.feedbackNotes || []).slice();
+  notes.splice(index, 1);
+  return updateHomeProfile({ feedbackNotes: notes });
+}
+
+function renderFeedbackNotes(){
+  const listEl = document.getElementById("feedbackNotesList");
+  if (!listEl) return;
+  const profile = loadHomeProfile();
+  const notes = (profile && profile.feedbackNotes) || [];
+  if (notes.length === 0) {
+    listEl.innerHTML = '<p class="small">No notes saved yet.</p>';
+    return;
+  }
+  listEl.innerHTML = "";
+  notes.forEach((note, i) => {
+    const row = document.createElement("div");
+    row.className = "tag-row";
+    const d = new Date(note.savedAt);
+    row.innerHTML =
+      '<span>' + note.text + ' <span class="small" style="color:var(--text-dim);">(' + d.toLocaleDateString() + ')</span></span>' +
+      '<button data-remove-note="' + i + '">✕</button>';
+    listEl.appendChild(row);
+  });
+  listEl.querySelectorAll("button[data-remove-note]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      removeFeedbackNote(parseInt(btn.dataset.removeNote, 10));
+      renderFeedbackNotes();
+    });
+  });
+}
+
+document.getElementById("saveFeedbackNoteBtn").addEventListener("click", () => {
+  const textarea = document.getElementById("feedbackNoteText");
+  const text = textarea.value.trim();
+  if (!text) return;
+  saveFeedbackNote(text);
+  textarea.value = "";
+  renderFeedbackNotes();
+});
+
+renderFeedbackNotes();
 
 let lastBrahmaResult = null;
 
@@ -2182,8 +2290,6 @@ document.getElementById("clearHomeBtn").addEventListener("click", () => {
   clearHomeProfile();
   renderSavedHomeCard();
 });
-
-renderSavedHomeCard();
 
 /* ==================================================================
    Vastu compliance matrix
@@ -2627,6 +2733,62 @@ function formatStructuralOptionHtml(structuralOption){
     '</details>';
 }
 
+/**
+ * Renders a remedies array as checkboxes instead of a plain list, so
+ * completed remedies can be tracked and remembered — the "database of
+ * saved directions and remedies... detect the suggested remedies once
+ * it's done" feature. groupKey identifies which saved area/room this
+ * checklist belongs to (e.g. "area:KITCHEN" or "room:2"), read back by
+ * the delegated change handler below to persist completion.
+ */
+function formatRemediesChecklistHtml(remedies, statusMap, groupKey){
+  if (!remedies || remedies.length === 0) return "";
+  const items = remedies.map((r, i) => {
+    const checked = statusMap && statusMap[i] ? "checked" : "";
+    return '<label class="remedy-check-row"><input type="checkbox" class="remedy-checkbox" data-group="' +
+      groupKey + '" data-idx="' + i + '" ' + checked + '><span>' + r + '</span></label>';
+  }).join("");
+  return '<p style="margin-bottom:2px;"><strong>Remedies (tap to mark done):</strong></p>' + items;
+}
+
+// Persists a single remedy's done/not-done state against a saved area
+// direction or a saved Design-tab room. Keyed by index within that
+// remedy list — stable enough for a personal local tracker, though a
+// remedy's wording changing in a future update could shift what index
+// N refers to (an accepted trade-off for simplicity here).
+function setRemedyDone(groupKey, idx, done){
+  const profile = loadHomeProfile() || defaultHomeProfile();
+  if (groupKey.indexOf("area:") === 0) {
+    const areaKey = groupKey.slice(5);
+    const areaDirections = Object.assign({}, profile.areaDirections);
+    if (!areaDirections[areaKey]) return;
+    const entry = Object.assign({}, areaDirections[areaKey]);
+    entry.remediesStatus = Object.assign({}, entry.remediesStatus, { [idx]: done });
+    areaDirections[areaKey] = entry;
+    updateHomeProfile({ areaDirections: areaDirections });
+  } else if (groupKey.indexOf("room:") === 0) {
+    const roomIdx = parseInt(groupKey.slice(5), 10);
+    if (!profile.rooms || !profile.rooms[roomIdx]) return;
+    const rooms = profile.rooms.slice();
+    rooms[roomIdx] = Object.assign({}, rooms[roomIdx], {
+      remediesStatus: Object.assign({}, rooms[roomIdx].remediesStatus, { [idx]: done })
+    });
+    updateHomeProfile({ rooms: rooms });
+  }
+}
+
+// Delegated listener, attached once — renderMatrixSavedHome/renderSavedHomeCard
+// replace body.innerHTML on every render, which would destroy per-
+// checkbox listeners, so this listens on the stable parent instead.
+["matrixSavedHomeBody", "savedHomeBody"].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener("change", (e) => {
+    if (!e.target.classList.contains("remedy-checkbox")) return;
+    setRemedyDone(e.target.dataset.group, e.target.dataset.idx, e.target.checked);
+  });
+});
+
 function renderMatrixSavedHome(){
   const card = document.getElementById("matrixSavedHomeCard");
   const body = document.getElementById("matrixSavedHomeBody");
@@ -2657,7 +2819,7 @@ function renderMatrixSavedHome(){
         '<span>' + roomLabel(key) + ' — ' + entry.dir32 + ' (' + Math.round(entry.bearing) + '°)</span>' +
         '<span class="badge ' + badgeCls + '">' + badgeLabel + '</span>' +
         ((result.remedies.length || result.structuralOption) ?
-          '<div style="width:100%; margin-top:4px;">' + formatRemediesHtml(result.remedies) + formatStructuralOptionHtml(result.structuralOption) + '</div>' : '');
+          '<div style="width:100%; margin-top:4px;">' + formatRemediesChecklistHtml(result.remedies, entry.remediesStatus, "area:" + key) + formatStructuralOptionHtml(result.structuralOption) + '</div>' : '');
       html += row.outerHTML;
     });
   } else {
@@ -2665,7 +2827,7 @@ function renderMatrixSavedHome(){
   }
 
   if (profile.rooms && profile.rooms.length > 0) {
-    profile.rooms.forEach(r => {
+    profile.rooms.forEach((r, i) => {
       const result = evaluateMatrix(r.type, r.dir8);
       const badgeCls = result.status === "IDEAL" ? "badge-ideal" : (result.status === "FORBIDDEN" ? "badge-forbidden" : "badge-remedy");
       const badgeLabel = result.status === "IDEAL" ? "Ideal" : (result.status === "FORBIDDEN" ? "Forbidden" : "Remedy");
@@ -2675,7 +2837,7 @@ function renderMatrixSavedHome(){
       row.innerHTML =
         '<span>' + roomLabel(r.type) + ' — ' + (r.dir32 || r.dir8) + ' zone (' + Math.round(r.bearing) + '° from Brahmasthan)</span>' +
         '<span class="badge ' + badgeCls + '">' + badgeLabel + '</span>' +
-        (result.remedies.length ? '<div style="width:100%; margin-top:4px;">' + formatRemediesHtml(result.remedies) + formatStructuralOptionHtml(result.structuralOption) + '</div>' : '');
+        (result.remedies.length ? '<div style="width:100%; margin-top:4px;">' + formatRemediesChecklistHtml(result.remedies, r.remediesStatus, "room:" + i) + formatStructuralOptionHtml(result.structuralOption) + '</div>' : '');
       html += row.outerHTML;
     });
   } else {
@@ -2684,8 +2846,6 @@ function renderMatrixSavedHome(){
 
   body.innerHTML = html;
 }
-
-renderMatrixSavedHome();
 
 wireSaveDirectionControl("dialSaveDirectionSelect", "dialSaveDirectionBtn", "dialSaveDirectionStatus", renderSavedHomeCard);
 wireSaveDirectionControl("matrixSaveDirectionSelect", "matrixSaveDirectionBtn", "matrixSaveDirectionStatus", renderMatrixSavedHome);
@@ -2800,6 +2960,17 @@ function roomLabel(key){
   const found = HOME_ELEMENTS.find(e => e.key === key);
   return found ? found.label : key;
 }
+
+// Called here, not earlier, because both render functions call
+// roomLabel() (and transitively HOME_ELEMENTS/evaluateMatrix) — this
+// is the first point in the script where all of those are guaranteed
+// to already be declared. Calling them any earlier only fails once
+// there's actual saved profile data to render (an empty profile takes
+// an early-return path that never reaches the roomLabel call), which
+// is exactly why this went undetected until a reload with real saved
+// data exposed it.
+renderSavedHomeCard();
+renderMatrixSavedHome();
 
 function directionProfileSummary(dir8){
   const p = DIRECTION_PROFILE[dir8];
@@ -2990,12 +3161,122 @@ document.getElementById("parseListingBtn").addEventListener("click", () => {
     ". This is a plain keyword match, not verified extraction — confirm against the actual listing, then measure for real on the Dial tab rather than relying on this alone.";
 });
 
-let floorPlans = [];        // [{ label, img }]
+/**
+ * Parses a short OCR'd label as a real-world dimension if it looks
+ * like one. Distinguishes a plain length (meters, or cm converted to
+ * meters) from an area (m²) — floor plans commonly print either. A
+ * bare whole number with no decimal point and no unit (e.g. "40") is
+ * deliberately rejected rather than treated as a dimension, since
+ * that's exactly what a house number, room number, or unrelated OCR
+ * noise looks like — only numbers that look unambiguously like a
+ * measurement (a decimal, or an explicit m/cm/m²) are accepted.
+ * Returns null for anything else, or a non-positive value.
+ */
+function parseDimensionText(text){
+  if (!text) return null;
+  const t = text.trim().toLowerCase().replace(",", ".");
+  const match = /^(-?\d+(?:\.\d+)?)\s*(m2|m²|cm|m)?$/.exec(t);
+  if (!match) return null;
+  const raw = parseFloat(match[1]);
+  if (isNaN(raw) || raw <= 0) return null;
+  const unit = match[2];
+  const hasDecimal = match[1].indexOf(".") !== -1;
+  if (!hasDecimal && !unit) return null;
+
+  if (unit === "m2" || unit === "m²") {
+    return { type: "area", valueM2: raw };
+  }
+  const valueMeters = unit === "cm" ? raw / 100 : raw;
+  return { type: "length", valueMeters: valueMeters };
+}
+
+/**
+ * Given a room label's pixel position and a list of other OCR'd words
+ * (each {text, x, y}), finds the nearest one that parses as a
+ * dimension within maxDistancePx. Returns the parsed dimension object
+ * (from parseDimensionText) plus the source text and distance, or
+ * null if nothing dimension-like is close enough — never fabricates a
+ * size when nothing was actually printed near the label.
+ */
+function findNearestDimension(roomPoint, otherWords, maxDistancePx){
+  let best = null;
+  let bestDist = Infinity;
+  otherWords.forEach(w => {
+    const parsed = parseDimensionText(w.text);
+    if (parsed === null) return;
+    const dx = w.x - roomPoint.x;
+    const dy = w.y - roomPoint.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist <= maxDistancePx && dist < bestDist) {
+      bestDist = dist;
+      best = Object.assign({}, parsed, { sourceText: w.text.trim() });
+    }
+  });
+  return best;
+}
+
+let floorPlans = [];        // [{ label, img, transform:{rotation,flipH,flipV}, effectiveCanvas }]
 let currentFloorIndex = -1;
 let floorPlanVisible = false;
 let ocrResultsByFloor = {}; // { floorIndex: [{type, dir8, x, y}] }
 let zoneOverlayOn = false;
 let overlaySectorCount = 8;
+
+/**
+ * Renders a floor plan entry's original image through its current
+ * rotate/flip transform into an offscreen canvas. This canvas becomes
+ * the single source of truth used for BOTH display and OCR — so a
+ * flip/rotate the user applies to fix a wrongly-detected facing is
+ * guaranteed to be reflected in the actual text-recognition/bearing
+ * results too, not just the picture.
+ */
+function updateEffectiveCanvas(entry){
+  const img = entry.img;
+  const t = entry.transform;
+  const swapDims = (t.rotation === 90 || t.rotation === 270);
+  const canvas = document.createElement("canvas");
+  canvas.width = swapDims ? img.naturalHeight : img.naturalWidth;
+  canvas.height = swapDims ? img.naturalWidth : img.naturalHeight;
+  const ctx = canvas.getContext("2d");
+  ctx.save();
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(t.rotation * Math.PI / 180);
+  ctx.scale(t.flipH ? -1 : 1, t.flipV ? -1 : 1);
+  ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+  ctx.restore();
+  entry.effectiveCanvas = canvas;
+  return canvas;
+}
+
+function applyFloorPlanTransform(partial){
+  if (currentFloorIndex < 0) return;
+  const entry = floorPlans[currentFloorIndex];
+  entry.transform = Object.assign({}, entry.transform, partial);
+  updateEffectiveCanvas(entry);
+  // A flip/rotate invalidates any previous OCR positions for this
+  // floor — clear them and automatically re-read the text on the
+  // corrected orientation, the same as a fresh upload, rather than
+  // silently showing stale, now-wrong directions or waiting for a
+  // manual re-tap.
+  delete ocrResultsByFloor[currentFloorIndex];
+  renderOcrResults();
+  if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+  runOcrOnCurrentFloor();
+}
+
+document.getElementById("rotateBtn").addEventListener("click", () => {
+  if (currentFloorIndex < 0) return;
+  const current = floorPlans[currentFloorIndex].transform.rotation;
+  applyFloorPlanTransform({ rotation: (current + 90) % 360 });
+});
+document.getElementById("flipHBtn").addEventListener("click", () => {
+  if (currentFloorIndex < 0) return;
+  applyFloorPlanTransform({ flipH: !floorPlans[currentFloorIndex].transform.flipH });
+});
+document.getElementById("flipVBtn").addEventListener("click", () => {
+  if (currentFloorIndex < 0) return;
+  applyFloorPlanTransform({ flipV: !floorPlans[currentFloorIndex].transform.flipV });
+});
 
 document.getElementById("overlaySectorSeg").addEventListener("click", (e) => {
   if (e.target.tagName !== "BUTTON") return;
@@ -3036,7 +3317,9 @@ document.getElementById("floorPlanUpload").addEventListener("change", (e) => {
     reader.onload = (ev) => {
       const img = new Image();
       img.onload = () => {
-        floorPlans.push({ label: "Floor " + (floorPlans.length + 1), img: img });
+        const entry = { label: "Floor " + (floorPlans.length + 1), img: img, transform: { rotation: 0, flipH: false, flipV: false } };
+        updateEffectiveCanvas(entry);
+        floorPlans.push(entry);
         currentFloorIndex = floorPlans.length - 1;
         loaded++;
         if (loaded === files.length) {
@@ -3044,6 +3327,10 @@ document.getElementById("floorPlanUpload").addEventListener("change", (e) => {
           document.getElementById("floorPlanToggleBtn").textContent = "Show behind plan: On";
           renderFloorPlanTabs();
           if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+          // Auto-run text recognition on upload — no manual button
+          // press required. The button still exists to re-scan (e.g.
+          // after a flip/rotate).
+          runOcrOnCurrentFloor();
         }
       };
       img.src = ev.target.result;
@@ -3096,8 +3383,13 @@ function renderOcrResults(){
     const result = evaluateMatrix(item.type, item.dir8);
     const badgeCls = result.status === "IDEAL" ? "badge-ideal" : (result.status === "FORBIDDEN" ? "badge-forbidden" : "badge-remedy");
     const badgeLabel = result.status === "IDEAL" ? "Ideal" : (result.status === "FORBIDDEN" ? "Forbidden" : "Remedy");
+    const sizeText = item.sizeHint ?
+      (item.sizeHint.type === "area" ?
+        " · ~" + item.sizeHint.valueM2.toFixed(1) + "m² (from \"" + item.sizeHint.sourceText + "\" nearby)" :
+        " · ~" + item.sizeHint.valueMeters.toFixed(2) + "m (from \"" + item.sizeHint.sourceText + "\" nearby)") :
+      "";
     html += '<div class="room-compliance-row" style="flex-wrap:wrap;">' +
-      '<span>"' + item.rawText + '" → ' + roomLabel(item.type) + ' — ' + item.dir8 + '</span>' +
+      '<span>"' + item.rawText + '" → ' + roomLabel(item.type) + ' — ' + item.dir8 + sizeText + '</span>' +
       '<span class="badge ' + badgeCls + '">' + badgeLabel + '</span>' +
       ((result.remedies.length || result.structuralOption) ?
         '<div style="width:100%; margin-top:4px;">' + formatRemediesHtml(result.remedies) + formatStructuralOptionHtml(result.structuralOption) + '</div>' : '') +
@@ -3106,7 +3398,16 @@ function renderOcrResults(){
   listEl.innerHTML = html;
 }
 
-document.getElementById("runOcrBtn").addEventListener("click", async () => {
+/**
+ * Runs OCR on the CURRENT floor's effectiveCanvas (the already-
+ * rotated/flipped version — critical, since using the original
+ * untransformed image here would silently make directions wrong
+ * after the user corrects a flip). Small images are upscaled first,
+ * since Tesseract's accuracy and consistency both improve noticeably
+ * on higher-resolution input — a real, common OCR-quality technique,
+ * not a cosmetic tweak.
+ */
+async function runOcrOnCurrentFloor(){
   if (currentFloorIndex < 0) {
     document.getElementById("ocrStatus").textContent = "Upload a floor plan image first.";
     return;
@@ -3121,27 +3422,64 @@ document.getElementById("runOcrBtn").addEventListener("click", async () => {
   }
 
   statusEl.textContent = "Reading text on this floor's image…";
-  const img = floorPlans[currentFloorIndex].img;
+  const entry = floorPlans[currentFloorIndex];
+  const sourceCanvas = entry.effectiveCanvas;
+
+  // Upscale small images before OCR — recognition accuracy and
+  // consistency both drop noticeably below roughly 800px on the long
+  // edge, and floor plan photos/screenshots are often smaller than
+  // that.
+  const MIN_OCR_DIMENSION = 900;
+  const longEdge = Math.max(sourceCanvas.width, sourceCanvas.height);
+  const scaleFactor = longEdge < MIN_OCR_DIMENSION ? MIN_OCR_DIMENSION / longEdge : 1;
+  let ocrCanvas = sourceCanvas;
+  if (scaleFactor > 1) {
+    ocrCanvas = document.createElement("canvas");
+    ocrCanvas.width = sourceCanvas.width * scaleFactor;
+    ocrCanvas.height = sourceCanvas.height * scaleFactor;
+    const octx = ocrCanvas.getContext("2d");
+    octx.imageSmoothingEnabled = true;
+    octx.imageSmoothingQuality = "high";
+    octx.drawImage(sourceCanvas, 0, 0, ocrCanvas.width, ocrCanvas.height);
+  }
+
   try {
-    const result = await Tesseract.recognize(img, "eng");
-    const words = (result.data.words || []).filter(w => w.confidence > 45 && w.text.trim().length > 1);
-    const centerX = img.naturalWidth / 2, centerY = img.naturalHeight / 2;
+    const result = await Tesseract.recognize(ocrCanvas, "eng");
+    // Coordinates are in the (possibly upscaled) OCR canvas — divide
+    // back down by scaleFactor so positions match the effectiveCanvas
+    // (and therefore the displayed image) exactly.
+    const words = (result.data.words || [])
+      .filter(w => w.confidence > 50 && w.text.trim().length > 1)
+      .map(w => ({
+        text: w.text,
+        x: ((w.bbox.x0 + w.bbox.x1) / 2) / scaleFactor,
+        y: ((w.bbox.y0 + w.bbox.y1) / 2) / scaleFactor
+      }));
+
+    const centerX = sourceCanvas.width / 2, centerY = sourceCanvas.height / 2;
     const found = [];
     const seenTypes = new Set();
     words.forEach(w => {
       const type = mapRoomLabelToType(w.text);
       if (!type) return;
-      const wordCenterX = (w.bbox.x0 + w.bbox.x1) / 2;
-      const wordCenterY = (w.bbox.y0 + w.bbox.y1) / 2;
       const bearing = roomBearingFromCentroid(
-        { x: wordCenterX, y: wordCenterY, w: 0, d: 0 },
+        { x: w.x, y: w.y, w: 0, d: 0 },
         { x: centerX, y: centerY }
       );
       const dir8 = sectorName(sectorIndex(bearing, 8), 8);
       const dedupeKey = type + ":" + dir8;
       if (seenTypes.has(dedupeKey)) return;
       seenTypes.add(dedupeKey);
-      found.push({ rawText: w.text.trim(), type: type, dir8: dir8, x: wordCenterX, y: wordCenterY });
+
+      // Look for a nearby size label (e.g. "12,5 m²" or "4.2") printed
+      // close to this room's name on the plan.
+      const otherWords = words.filter(other => other !== w);
+      const sizeHint = findNearestDimension(w, otherWords, sourceCanvas.width * 0.15);
+
+      found.push({
+        rawText: w.text.trim(), type: type, dir8: dir8, x: w.x, y: w.y,
+        sizeHint: sizeHint
+      });
     });
     ocrResultsByFloor[currentFloorIndex] = found;
     statusEl.textContent = found.length > 0 ?
@@ -3151,7 +3489,9 @@ document.getElementById("runOcrBtn").addEventListener("click", async () => {
   } catch (e) {
     statusEl.textContent = "OCR failed to process this image. Try a clearer/higher-resolution photo.";
   }
-});
+}
+
+document.getElementById("runOcrBtn").addEventListener("click", runOcrOnCurrentFloor);
 
 /* ---------- Ideal-zone overlay: shows where a room type should/shouldn't go, drawn on the image itself ---------- */
 function populateZoneOverlaySelect(){
@@ -3233,7 +3573,7 @@ function drawPlan2d(roomsList, centroid){
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0,0,w,h);
 
-  const currentImg = currentFloorIndex >= 0 ? floorPlans[currentFloorIndex].img : null;
+  const currentImg = currentFloorIndex >= 0 ? floorPlans[currentFloorIndex].effectiveCanvas : null;
   if (floorPlanVisible && currentImg) {
     ctx.globalAlpha = 0.45;
     ctx.drawImage(currentImg, 0, 0, w, h);
