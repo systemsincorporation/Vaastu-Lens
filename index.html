@@ -206,7 +206,7 @@
     padding: 8px 4px; border-radius: 8px; font-size: 12px; flex: 1; min-width: 90px;
   }
   .room-row button { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); border-radius: 8px; padding: 8px 10px; }
-  #planCanvas { width: 100%; border-radius: 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); touch-action: none; }
+  #planCanvas { width: 100%; border-radius: 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); touch-action: none; cursor: crosshair; }
   #viewToggle { display: flex; gap: 6px; margin-bottom: 8px; }
   #view3d { width: 100%; height: 280px; border-radius: 14px; overflow: hidden; border: 1px solid var(--glass-border); background: #050308; }
   #view3d canvas { width: 100% !important; height: 100% !important; display: block; touch-action: none; }
@@ -305,6 +305,7 @@
           <div class="center-text small" id="fallbackLine" style="display:none; color:#ff8a8a;">
             True north unavailable — showing magnetic north until a location fix arrives.
           </div>
+          <div class="center-text small" id="northExplainLine" style="margin-top:4px; color:var(--text-dim);"></div>
           <div class="center-text small" id="qualityLine" style="margin-top:6px;">
             Stability: good · ±5° (reading-stability heuristic, not a hardware sensor report)
           </div>
@@ -323,6 +324,19 @@
         <button id="dialCameraToggleBtn" class="lens-chip" style="box-shadow:none;">Camera background: Off</button>
         <button id="headingFlipBtn" class="lens-chip" style="box-shadow:none;">Flip 180°: Off</button>
       </div>
+
+      <div class="card tertiary" style="margin-bottom:12px;">
+        <h2 style="margin-top:0;">Reading doesn't match your phone's compass?</h2>
+        <p>Phones and browsers genuinely disagree on how to report
+        compass heading, so this can happen on some devices. The
+        reliable fix: open your phone's own regular compass app
+        <strong>without moving the phone</strong>, read the number it
+        shows, and enter it here.</p>
+        <input type="number" id="calibrateMatchInput" placeholder="e.g. 137" min="0" max="359">
+        <button class="primary" id="calibrateMatchBtn" style="margin-top:6px;">Calibrate to match</button>
+        <p class="small" id="calibrateMatchStatus" style="margin-top:4px;"></p>
+      </div>
+
       <p class="small" style="text-align:center; margin:0 0 6px;">If your readings consistently point the
       opposite way from reality (e.g. facing your actual front door reads
       as the direction directly behind you), tap Flip 180° — this
@@ -664,6 +678,18 @@
 
       <div class="card" id="plan2dCard" style="display:none;">
         <canvas id="planCanvas" width="320" height="320"></canvas>
+        <p class="small" id="manualMarkHint" style="margin-top:6px;">Tap anywhere on the floor plan
+        image above to mark what's there — the entrance, a toilet,
+        anything — even if automatic text detection missed it or got
+        it wrong.</p>
+        <div id="manualMarkPrompt" style="display:none; margin-top:6px;">
+          <p class="small">Point marked. What's here?</p>
+          <select id="manualMarkTypeSelect" class="full"></select>
+          <div class="row" style="margin-top:6px;">
+            <button class="primary" id="manualMarkConfirmBtn">Confirm</button>
+            <button class="ghost" id="manualMarkCancelBtn">Cancel</button>
+          </div>
+        </div>
       </div>
 
       <div class="card" id="plan3dCard" style="display:none;">
@@ -1151,6 +1177,30 @@ function usingMagneticFallback(){
   return state.reference === "true" && !state.trueHeadingAvailable;
 }
 
+/**
+ * Plain-language explanation of why the shown heading might differ
+ * from what a simple magnetic compass would show — the exact
+ * confusion a layperson hits: "it says north but a different number
+ * than my phone's normal compass app." Pure and testable so the
+ * wording logic isn't only checked by eye.
+ */
+function northExplanationText(rawHeading, referenceMode, trueHeadingAvailable, declination){
+  if (referenceMode === "magnetic") {
+    return "Showing your phone's raw sensor reading — the same number a simple magnetic compass app would show, not adjusted for true north.";
+  }
+  if (!trueHeadingAvailable) {
+    return "Showing your phone's raw sensor reading for now (true north needs a location fix) — this matches a simple magnetic compass app.";
+  }
+  if (Math.abs(declination) < 0.5) {
+    return "True north and magnetic north are almost identical here (" + declination.toFixed(1) + "°), so this closely matches a simple magnetic compass app.";
+  }
+  const trueHeading = normalize(rawHeading + declination);
+  const dir = declination > 0 ? "east" : "west";
+  return "Your phone's raw sensor reads " + Math.round(rawHeading) + "° magnetic — a simple compass app would show that number. " +
+    "True north here is " + Math.abs(declination).toFixed(1) + "° to the " + dir + " of magnetic north, so this dial shows " +
+    Math.round(trueHeading) + "° (true north) instead. That difference is expected, not an error.";
+}
+
 function canAnalyze(){
   return state.quality === "good" || state.quality === "caution";
 }
@@ -1311,8 +1361,40 @@ function toggleHeadingFlip(){
   if (btn) btn.textContent = manualHeadingOffset === 180 ? "Flip 180°: On" : "Flip 180°: Off";
 }
 
+/**
+ * Given what the user says their phone's OWN (regular, magnetic)
+ * compass currently reads, and what this app is CURRENTLY displaying
+ * as the raw/magnetic heading (which already has some prior offset
+ * baked in), computes the new offset that makes the two match. This
+ * is the reliable fix for sensor-convention bugs: rather than guessing
+ * another cross-browser formula, it calibrates directly against
+ * ground truth the user can see for themselves.
+ */
+function computeCalibrationOffset(enteredHeading, currentDisplayedRawHeading, priorOffset){
+  const priorRaw = normalize(currentDisplayedRawHeading - priorOffset);
+  return normalize(enteredHeading - priorRaw);
+}
+
 document.getElementById("headingFlipBtn").addEventListener("click", toggleHeadingFlip);
 document.getElementById("headingFlipBtn").textContent = manualHeadingOffset === 180 ? "Flip 180°: On" : "Flip 180°: Off";
+
+document.getElementById("calibrateMatchBtn").addEventListener("click", () => {
+  const statusEl = document.getElementById("calibrateMatchStatus");
+  const entered = parseFloat(document.getElementById("calibrateMatchInput").value);
+  if (isNaN(entered)) {
+    statusEl.textContent = "Enter the number your phone's own compass app shows first.";
+    return;
+  }
+  const rawBase = state.smoothedHeading === null ? state.rawHeading : state.smoothedHeading;
+  if (rawBase === null) {
+    statusEl.textContent = "No sensor reading yet — wait a moment for the dial to start moving, then try again.";
+    return;
+  }
+  manualHeadingOffset = computeCalibrationOffset(entered, rawBase, manualHeadingOffset);
+  try { localStorage.setItem(HEADING_OFFSET_KEY, String(manualHeadingOffset)); } catch (e) { /* not fatal */ }
+  document.getElementById("headingFlipBtn").textContent = manualHeadingOffset === 180 ? "Flip 180°: On" : "Flip 180°: Off";
+  statusEl.textContent = "Calibrated — this should now match your phone's compass. Saved for next time.";
+});
 
 // Generic wiring for a "save this direction for area X" control — used
 // on the Dial and Matrix tabs (the Lens tab uses its own richer
@@ -1599,6 +1681,8 @@ function render(){
   document.getElementById("refLine").textContent =
     "Reference: " + (state.reference === "true" ? "true north" : "magnetic north");
   document.getElementById("fallbackLine").style.display = usingMagneticFallback() ? "block" : "none";
+  document.getElementById("northExplainLine").textContent =
+    northExplanationText(state.rawHeading, state.reference, state.trueHeadingAvailable, state.declination);
   document.getElementById("qualityLine").textContent =
     "Stability: " + state.quality + " · ±" + state.errorDeg +
     "° (reading-stability heuristic, not a hardware sensor report)";
@@ -3375,7 +3459,7 @@ function renderOcrResults(){
   const results = ocrResultsByFloor[currentFloorIndex];
   if (!results) { listEl.innerHTML = ""; return; }
   if (results.length === 0) {
-    listEl.innerHTML = '<p class="small">No recognizable room labels found on this floor\'s image.</p>';
+    listEl.innerHTML = '<p class="small">No recognizable room labels found yet — tap directly on the plan above to mark rooms manually, entrance included.</p>';
     return;
   }
   let html = "";
@@ -3388,12 +3472,20 @@ function renderOcrResults(){
         " · ~" + item.sizeHint.valueM2.toFixed(1) + "m² (from \"" + item.sizeHint.sourceText + "\" nearby)" :
         " · ~" + item.sizeHint.valueMeters.toFixed(2) + "m (from \"" + item.sizeHint.sourceText + "\" nearby)") :
       "";
-    html += '<div class="room-compliance-row" style="flex-wrap:wrap;">' +
-      '<span>"' + item.rawText + '" → ' + roomLabel(item.type) + ' — ' + item.dir8 + sizeText + '</span>' +
-      '<span class="badge ' + badgeCls + '">' + badgeLabel + '</span>' +
-      ((result.remedies.length || result.structuralOption) ?
-        '<div style="width:100%; margin-top:4px;">' + formatRemediesHtml(result.remedies) + formatStructuralOptionHtml(result.structuralOption) + '</div>' : '') +
-      '</div>';
+    const sourceTag = item.source === "manual" ? "manually marked" : "auto-detected";
+    if (item.superseded) {
+      html += '<div class="room-compliance-row" style="flex-wrap:wrap; opacity:0.5;">' +
+        '<span style="text-decoration:line-through;">"' + item.rawText + '" → ' + roomLabel(item.type) + ' — ' + item.dir8 + '</span>' +
+        '<span class="small">old (' + sourceTag + ') — replaced below</span>' +
+        '</div>';
+    } else {
+      html += '<div class="room-compliance-row" style="flex-wrap:wrap;">' +
+        '<span>"' + item.rawText + '" → ' + roomLabel(item.type) + ' — ' + item.dir8 + sizeText + ' <span class="small">(' + sourceTag + ')</span></span>' +
+        '<span class="badge ' + badgeCls + '">' + badgeLabel + '</span>' +
+        ((result.remedies.length || result.structuralOption) ?
+          '<div style="width:100%; margin-top:4px;">' + formatRemediesHtml(result.remedies) + formatStructuralOptionHtml(result.structuralOption) + '</div>' : '') +
+        '</div>';
+    }
   });
   listEl.innerHTML = html;
 }
@@ -3478,10 +3570,19 @@ async function runOcrOnCurrentFloor(){
 
       found.push({
         rawText: w.text.trim(), type: type, dir8: dir8, x: w.x, y: w.y,
-        sizeHint: sizeHint
+        sizeHint: sizeHint, source: "ocr", superseded: false
       });
     });
-    ocrResultsByFloor[currentFloorIndex] = found;
+    // A manual correction takes precedence over a fresh OCR re-read —
+    // preserve it instead of silently overwriting it, and mark the new
+    // OCR entry for that same type as superseded so both remain
+    // visible (old vs new), rather than the manual mark just vanishing
+    // the next time OCR runs.
+    const existingManual = (ocrResultsByFloor[currentFloorIndex] || []).filter(r => r.source === "manual" && !r.superseded);
+    found.forEach(f => {
+      if (existingManual.some(m => m.type === f.type)) f.superseded = true;
+    });
+    ocrResultsByFloor[currentFloorIndex] = found.concat(existingManual);
     statusEl.textContent = found.length > 0 ?
       "Found " + found.length + " recognizable room label" + (found.length === 1 ? "" : "s") + ". Direction is measured from this image's own midpoint, as an approximation — the Center tab's plot-based Brahmasthan is more accurate if you have it." :
       "OCR ran, but found no text it could match to a known room type.";
@@ -3494,6 +3595,102 @@ async function runOcrOnCurrentFloor(){
 document.getElementById("runOcrBtn").addEventListener("click", runOcrOnCurrentFloor);
 
 /* ---------- Ideal-zone overlay: shows where a room type should/shouldn't go, drawn on the image itself ---------- */
+/* ---------- Manual point-marking: mark any room (entrance included)
+   directly on the floor plan image, whether or not automatic text
+   detection found or correctly identified it. ---------- */
+let pendingManualPoint = null; // {x, y} in the floor plan image's own pixel space
+
+function populateManualMarkSelect(){
+  const sel = document.getElementById("manualMarkTypeSelect");
+  sel.innerHTML = "";
+  HOME_ELEMENTS.forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t.key;
+    opt.textContent = t.label;
+    sel.appendChild(opt);
+  });
+}
+populateManualMarkSelect();
+
+document.getElementById("planCanvas").addEventListener("click", (e) => {
+  if (currentFloorIndex < 0 || !floorPlanVisible) return;
+  const canvas = document.getElementById("planCanvas");
+  const rect = canvas.getBoundingClientRect();
+  const clickX = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const clickY = (e.clientY - rect.top) * (canvas.height / rect.height);
+  const img = floorPlans[currentFloorIndex].effectiveCanvas;
+  // drawPlan2d stretches the floor plan image to fill the canvas
+  // exactly (0,0,w,h) — so mapping a click back to image-space is a
+  // simple ratio, no offset/letterboxing to account for.
+  pendingManualPoint = {
+    x: clickX * (img.width / canvas.width),
+    y: clickY * (img.height / canvas.height)
+  };
+  document.getElementById("manualMarkPrompt").style.display = "block";
+});
+
+document.getElementById("manualMarkCancelBtn").addEventListener("click", () => {
+  pendingManualPoint = null;
+  document.getElementById("manualMarkPrompt").style.display = "none";
+});
+
+document.getElementById("manualMarkConfirmBtn").addEventListener("click", () => {
+  if (!pendingManualPoint || currentFloorIndex < 0) return;
+  const type = document.getElementById("manualMarkTypeSelect").value;
+  const img = floorPlans[currentFloorIndex].effectiveCanvas;
+  const centerX = img.width / 2, centerY = img.height / 2;
+  const bearing = roomBearingFromCentroid(
+    { x: pendingManualPoint.x, y: pendingManualPoint.y, w: 0, d: 0 },
+    { x: centerX, y: centerY }
+  );
+  const dir8 = sectorName(sectorIndex(bearing, 8), 8);
+
+  const results = (ocrResultsByFloor[currentFloorIndex] || []).slice();
+  // Any existing entry (auto-detected or an earlier manual mark) for
+  // this same room type is now old — keep it visible but flagged,
+  // rather than deleting it silently, so the correction is shown as
+  // an explicit before/after rather than just vanishing.
+  results.forEach(r => { if (r.type === type && !r.superseded) r.superseded = true; });
+  results.push({
+    rawText: roomLabel(type) + " (marked by you)", type: type, dir8: dir8,
+    x: pendingManualPoint.x, y: pendingManualPoint.y,
+    sizeHint: null, source: "manual", superseded: false
+  });
+  ocrResultsByFloor[currentFloorIndex] = results;
+
+  pendingManualPoint = null;
+  document.getElementById("manualMarkPrompt").style.display = "none";
+  renderOcrResults();
+  if (lastDesignCentroid) drawPlan2d(rooms, lastDesignCentroid);
+});
+
+/**
+ * Draws a small labeled marker for every non-superseded detected/
+ * marked room directly on the floor plan — so results are visible on
+ * the map itself, not just as text underneath it. Manual marks and
+ * auto-detected ones are colored differently so it's clear which is
+ * which at a glance.
+ */
+function drawOcrMarkers(ctx, results, imgW, imgH, canvasW, canvasH){
+  if (!results || !imgW || !imgH) return;
+  const sx = canvasW / imgW, sy = canvasH / imgH;
+  results.forEach(item => {
+    if (item.superseded) return;
+    const cx = item.x * sx, cy = item.y * sy;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 7, 0, 2 * Math.PI);
+    ctx.fillStyle = item.source === "manual" ? "#2f7fd1" : "#c98a00";
+    ctx.fill();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = "#1a1a2e";
+    ctx.font = "bold 9px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(roomLabel(item.type).split(" ")[0].split("/")[0], cx, cy - 11);
+  });
+}
+
 function populateZoneOverlaySelect(){
   const sel = document.getElementById("zoneOverlaySelect");
   sel.innerHTML = "";
@@ -3583,6 +3780,10 @@ function drawPlan2d(roomsList, centroid){
   if (zoneOverlayOn && currentImg) {
     const overlayType = document.getElementById("zoneOverlaySelect").value;
     drawZoneOverlay(ctx, w / 2, h / 2, Math.min(w, h) / 2 - 10, overlayType, overlaySectorCount);
+  }
+
+  if (currentImg) {
+    drawOcrMarkers(ctx, ocrResultsByFloor[currentFloorIndex], currentImg.width, currentImg.height, w, h);
   }
 
   const maxX = Math.max(...roomsList.map(r => r.x + r.w), 1);
