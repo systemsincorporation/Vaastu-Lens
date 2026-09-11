@@ -271,6 +271,13 @@
   #compassGlossaryTable tr.primary-point td { font-weight: 700; }
   #compassGlossaryTable .abbr-col { width: 20%; }
   #compassGlossaryTable .deg-col { width: 22%; color: var(--text-dim); }
+
+  /* Guide tab: shared reference-table styling for the 16-zone /
+     Pancha Tattva / non-demolition remedy knowledge base tables */
+  .kb-table table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .kb-table th { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--glass-border); color: var(--text-dim); font-weight: 700; }
+  .kb-table td { padding: 6px 4px; border-bottom: 1px solid var(--glass-border); vertical-align: top; }
+  .kb-table .zone-col { width: 12%; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -455,7 +462,13 @@
         <h2>Brahmasthan (plot center)</h2>
         <p>Pick how you want to describe your plot's boundary. The
         centroid is exact math for the shape you give it — the only
-        source of error is how closely that shape matches the real plot.</p>
+        source of error is how closely that shape matches the real plot.
+        For an irregular plot: use <strong>Custom</strong> if you already
+        have (or can measure) corner coordinates, <strong>Walls</strong>
+        if you only have wall lengths off a floor plan (the way most
+        Dutch plans are actually dimensioned), or <strong>Camera+GPS</strong>
+        outdoors. All three feed the exact same polygon-centroid math —
+        none of them approximate the shape.</p>
       </div>
 
       <div class="card">
@@ -495,6 +508,7 @@
       <div class="segrow" id="shapeSeg">
         <button data-shape="rect" class="active">Rectangle</button>
         <button data-shape="poly">Custom</button>
+        <button data-shape="walls">Walls</button>
         <button data-shape="auto">Camera+GPS</button>
       </div>
 
@@ -517,6 +531,26 @@
         </div>
         <div id="vertexList"></div>
         <button class="ghost" id="addVertexBtn">+ Add corner</button>
+      </div>
+
+      <div class="card" id="wallsCard" style="display:none;">
+        <div class="small" style="margin-bottom:6px;">
+          For an L-shaped, chamfered, or otherwise non-rectangular plot
+          where you have <strong>wall lengths</strong> from a floor
+          plan or tape measure rather than coordinates — the way most
+          Dutch floor plans are actually dimensioned. Start at any
+          corner and enter each wall in order going around the
+          boundary (either direction is fine, as long as you stay
+          consistent): its length, then how many degrees you turn
+          before the next wall (90° for a normal square corner; use
+          the exact angle for a chamfered/angled corner, negative to
+          turn the other way). This walks out your plot's exact
+          outline and feeds it through the same exact centroid math as
+          Custom entry — no manual sub-shape splitting needed.
+        </div>
+        <div id="wallList"></div>
+        <button class="ghost" id="addWallBtn">+ Add wall</button>
+        <p class="small" id="wallClosureNote" style="margin-top:8px; color:var(--text-dim);"></p>
       </div>
 
       <div class="card" id="autoCard" style="display:none;">
@@ -655,49 +689,69 @@
         <p>Upload one image per floor (ground floor, first floor, etc.)
         — plain photos/screenshots only, not PDFs; screenshot a PDF
         page first if that's what you have. Each floor renders as a
-        semi-transparent background to trace your room list against.
-        "Read floor plan text" runs real on-device text recognition
-        (OCR) to find room labels already printed on the image — there
-        is no AI that visually detects walls/room shapes, only text it
-        can actually read, and it will miss anything not labeled or
-        illegible in the photo.</p>
+        semi-transparent background to trace your room list against.</p>
         <input type="file" accept="image/*" id="floorPlanUpload" multiple>
         <div id="floorPlanTabs" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;"></div>
-        <div class="row" style="margin-top:8px;">
-          <button class="ghost" id="floorPlanToggleBtn">Show behind plan: Off</button>
-          <button class="ghost" id="floorPlanClearBtn">Remove this floor</button>
-        </div>
-        <p class="small" style="margin-top:6px;">When the photo is shown, the
-        view below is the photo plus its own OCR markers/zone overlay.
-        When it's hidden, the view below switches to the room boxes
-        you type in further down — the two aren't drawn on top of each
-        other any more, since they're two different, unrelated
-        coordinate systems and overlapping them just produced clutter.</p>
-        <p class="small" style="margin-top:8px; margin-bottom:4px;">If the detected directions come out
-        wrong (e.g. the plan wasn't drawn north-up, or was scanned
-        upside down), correct the image's own orientation here — this
-        also re-derives the detected directions to match, not just the
-        picture:</p>
-        <div class="row">
-          <button class="ghost" id="rotateBtn">Rotate 90°</button>
-          <button class="ghost" id="flipHBtn">Flip ↔</button>
-          <button class="ghost" id="flipVBtn">Flip ↕</button>
-        </div>
 
-        <div class="small" style="margin-top:12px; margin-bottom:4px;">Or skip the guesswork — calibrate this photo's north using your phone's real compass:</div>
-        <p class="small" style="margin-bottom:6px;">Hold your phone flat
-        (like the Dial tab) and point the <strong>top edge of the
-        phone</strong> the same way the <strong>top edge of this photo</strong>
-        faces in real life, then tap Calibrate. Every direction this
-        photo produces — OCR, manual taps, the zone overlay — is
-        measured against this from then on, instead of assuming the
-        image was drawn north-up.</p>
-        <button class="ghost" id="calibrateNorthBtn">Calibrate photo's north with compass</button>
-        <button class="ghost" id="clearNorthCalBtn">Clear calibration</button>
-        <p class="small" id="northCalStatus" style="margin-top:4px;"></p>
+        <button class="primary" id="analyzeFloorPlanBtn" style="margin-top:10px;">Analyze this floor plan</button>
+        <p class="small" style="margin-top:4px;">The simplest path: one tap finds the
+        building's own true center (Brahmasthan) from the drawn outline, then reads every room
+        label it can (English, Dutch, or Hindi — Devanagari or romanized) and works out that
+        room's direction from the center it just found. Needs internet the first time (to load
+        the text-recognition models) and works fully offline afterward. Always check the marked
+        center against the picture below — it's a real geometric estimate, not a guarantee, and
+        you can override it with one tap if it looks wrong (see below).</p>
+        <p class="small" id="planDetectStatus" style="margin-top:6px;"></p>
 
-        <button class="ghost" id="runOcrBtn" style="margin-top:8px;">Read floor plan text (OCR)</button>
-        <p class="small" id="ocrStatus" style="margin-top:4px;"></p>
+        <details style="margin-top:10px;">
+          <summary class="small" style="cursor:pointer; color:var(--text-dim);">Do it in steps instead, or fix a wrong result</summary>
+          <div style="margin-top:8px;">
+            <p class="small">"Read floor plan text" runs real on-device text recognition
+            (OCR) to find room labels already printed on the image — there
+            is no AI that visually detects walls/room shapes, only text it
+            can actually read, and it will miss anything not labeled or
+            illegible in the photo.</p>
+            <div class="row">
+              <button class="ghost" id="detectBrahmaBtn">Auto-detect Brahmasthan only</button>
+              <button class="ghost" id="setBrahmaPointBtn">Set Brahmasthan point manually (tap the plan)</button>
+            </div>
+            <button class="ghost" id="runOcrBtn" style="margin-top:8px;">Read floor plan text (OCR) only</button>
+            <div class="row" style="margin-top:8px;">
+              <button class="ghost" id="floorPlanToggleBtn">Show behind plan: Off</button>
+              <button class="ghost" id="floorPlanClearBtn">Remove this floor</button>
+            </div>
+            <p class="small" style="margin-top:6px;">When the photo is shown, the
+            view below is the photo plus its own OCR markers/zone overlay.
+            When it's hidden, the view below switches to the room boxes
+            you type in further down — the two aren't drawn on top of each
+            other any more, since they're two different, unrelated
+            coordinate systems and overlapping them just produced clutter.</p>
+            <p class="small" style="margin-top:8px; margin-bottom:4px;">If the detected directions come out
+            wrong (e.g. the plan wasn't drawn north-up, or was scanned
+            upside down), correct the image's own orientation here — this
+            also re-derives the detected directions to match, not just the
+            picture:</p>
+            <div class="row">
+              <button class="ghost" id="rotateBtn">Rotate 90°</button>
+              <button class="ghost" id="flipHBtn">Flip ↔</button>
+              <button class="ghost" id="flipVBtn">Flip ↕</button>
+            </div>
+
+            <div class="small" style="margin-top:12px; margin-bottom:4px;">Or skip the guesswork — calibrate this photo's north using your phone's real compass:</div>
+            <p class="small" style="margin-bottom:6px;">Hold your phone flat
+            (like the Dial tab) and point the <strong>top edge of the
+            phone</strong> the same way the <strong>top edge of this photo</strong>
+            faces in real life, then tap Calibrate. Every direction this
+            photo produces — OCR, manual taps, the zone overlay — is
+            measured against this from then on, instead of assuming the
+            image was drawn north-up.</p>
+            <button class="ghost" id="calibrateNorthBtn">Calibrate photo's north with compass</button>
+            <button class="ghost" id="clearNorthCalBtn">Clear calibration</button>
+            <p class="small" id="northCalStatus" style="margin-top:4px;"></p>
+          </div>
+        </details>
+
+        <p class="small" id="ocrStatus" style="margin-top:8px;"></p>
         <div id="ocrRoomsList"></div>
 
         <div class="small" style="margin-top:12px; margin-bottom:4px;">Or: stand at (or near) this home's Brahmasthan/center and point your phone — no photo needed for this part:</div>
@@ -721,10 +775,11 @@
         </div>
         <button class="ghost" id="zoneOverlayToggleBtn">Show overlay: Off</button>
         <p class="small" style="margin-top:4px;">The overlay is centered
-        on the image's own midpoint as an approximation of the
-        Brahmasthan — not a substitute for the Center tab's real
-        plot-boundary calculation, which is more accurate if you have
-        it. At 16/32 zones, each fine slice still inherits its
+        on this floor's detected/set Brahmasthan point above (or the
+        plain image midpoint if you haven't run detection yet) —
+        still not a substitute for the Center tab's real plot-boundary
+        calculation in meters, which remains the more rigorous source
+        if you have it. At 16/32 zones, each fine slice still inherits its
         compliance from the same 8-direction rule its wedge sits
         within (e.g. every NE-range sliver reads as NE) — there's no
         separate 16/32-specific ruleset, just a finer-grained view of
@@ -881,6 +936,111 @@
         and which cardinal side each belongs to are solid; exact
         degree boundaries at the four corners are this app's own
         interpretation.</p>
+      </div>
+
+      <div class="card">
+        <h2>Modern diagnostic Vastu: the 16-zone Pancha Tattva system</h2>
+        <p>Everything above is the classical 45-pada Brihat Samhita
+        mandala. This card is a <strong>separate, more recent
+        layer</strong> — a 16-direction system (each of the 8 primary
+        points split in half) built around the five elements (Pancha
+        Tattva: Water, Air/Wood, Fire, Earth, Space) that's widely
+        taught in contemporary Vastu consulting courses. It agrees
+        with the classical system on the broad strokes (north/water,
+        southeast/fire, southwest/earth) but assigns life-attributes
+        at finer resolution and drives the non-demolition remedy
+        protocol in the next card. Treat every line here with the same
+        "commonly cited" hedge as the rest of this app — it is not a
+        canonical ancient text, and different modern teachers state
+        some of these zone attributes slightly differently.</p>
+        <div id="panchaTattvaTable" class="kb-table" style="margin-top:10px;"></div>
+        <div id="zone16Table" class="kb-table" style="margin-top:14px;"></div>
+      </div>
+
+      <div class="card">
+        <h2>Non-demolition remedy protocol (metal strip / tape / buffer slab)</h2>
+        <p>A recurring modern-diagnostic idea: instead of relocating or
+        rebuilding a defective room, isolate its element with a thin
+        metal strip embedded flush in the floor (or a wide colored
+        tape as a lighter-touch alternative) around the fixture
+        itself. The Matrix tab's Toilet and Kitchen remedy lists now
+        include the specific metal/tape/slab called for by whichever
+        direction you check — this card is the reference table those
+        suggestions are drawn from.</p>
+        <ul style="margin:8px 0 0 18px; padding:0; font-size:13px; color:var(--text-dim); line-height:1.6;">
+          <li><strong>Toilet isolation:</strong> cut a 3-4mm groove
+          around 3-4 sides of the commode base and embed the zone's
+          metal flush with the tile (sealed with epoxy/grout), or
+          apply a 3-4 inch wide tape of the zone's color around the
+          same base as a non-invasive alternative.</li>
+          <li><strong>Kitchen burner buffer:</strong> a stone/marble
+          slab in the buffering color (green for a hob in a Water/NE
+          zone, yellow for a hob in a Space/NW zone) placed directly
+          under the cooktop, reasoned as bridging the hob's own Fire
+          element with the zone it sits in.</li>
+          <li><strong>Zone area imbalance ("cut" vs "extended"
+          zones):</strong> if one of the 16 zones occupies noticeably
+          less floor area than the others (a "cut" zone, commonly
+          cited threshold ~10-15% below average), a continuous light
+          bulb or LED strip in that zone's own color, or a small
+          two-dimensional metal pyramid plate, is a commonly cited way
+          to "supply" the missing element without extending the
+          building. An "extended" zone (noticeably more area than
+          average) is instead treated with the color of the element
+          that consumes it in the destructive cycle, or a metal
+          divider strip at the extension's threshold.</li>
+        </ul>
+        <div id="nonDemolitionMetalTable" class="kb-table" style="margin-top:10px;"></div>
+        <p class="small" style="margin-top:8px; color:var(--text-dim);">Sourced from the same modern-diagnostic
+        16-zone tradition as the card above, not the classical Brihat Samhita material — the same honest caveat
+        applies: this is what's commonly taught and cited, not a claim of settled or universally-agreed fact.</p>
+      </div>
+
+      <div class="card">
+        <h2>Brahmasthan scope: plot vs. garden vs. individual rooms, and multi-floor plots</h2>
+        <p>Three practical questions this app gets asked often enough to answer directly:</p>
+        <ul style="margin:8px 0 0 18px; padding:0; font-size:13px; color:var(--text-dim); line-height:1.6;">
+          <li><strong>Does the garden count?</strong> For the living-space Brahmasthan
+          (the point this app's Center tab calculates), no — use only the enclosed, roofed
+          footprint. A detached shed/berging and the open garden or driveway belong to a
+          separate, "macro" plot-level analysis (mainly the main gate and any outdoor drainage/
+          water storage), not the indoor 16-zone grid used for rooms.</li>
+          <li><strong>Do you calculate a separate Brahmasthan for every room?</strong> No —
+          calculate it once for the whole enclosed footprint (the "meso" level); that single
+          point is what determines which zone a kitchen, bedroom, or toilet falls into. A
+          room's own center point matters only for arranging furniture inside that room (bed
+          in the room's own SW corner, for example) — it never overrides the zone the room
+          itself sits in relative to the whole-house Brahmasthan.</li>
+          <li><strong>Multi-floor houses:</strong> if every floor shares the same outer
+          footprint, one Brahmasthan calculation projects straight up through all of them —
+          this is the same point covered in the multi-floor card above. If an upper floor has
+          a different footprint (a setback terrace, a missing extension, a dormer), calculate
+          a separate Brahmasthan for that floor's own outline using Custom or Walls entry.
+          Traditionally, a toilet on an upper floor is flagged if it sits directly above a
+          ground-floor kitchen stove, pooja altar, or bed headboard — worth checking floor
+          plans against each other specifically for that, independent of each floor's own
+          zone analysis.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Sourcing non-demolition materials in the Netherlands</h2>
+        <p>The metals and tapes above are ordinary hardware-store items, not anything
+        specialist — Gamma, Praxis, Karwei, and the Action all stock copper and aluminium
+        tape/strip (sold for roofing/flashing or electrical work), stainless steel edge strip
+        (sold for tiling trim), and brass strip (sold for craft/hobby use). Colored PVC/vinyl
+        tape in the required widths is standard electrical or floor-marking tape from the same
+        stores. A green- or yellow-toned stone slab for the kitchen-burner buffer doesn't need
+        to be genuine Indian marble — any similarly colored granite, composite, or natural stone
+        offcut from a Dutch kitchen showroom serves the same symbolic role in this tradition.</p>
+        <p style="margin-top:8px;">Two Dutch-context notes worth flagging honestly: narrow
+        canal houses and rowhouses very often place the bathroom at the rear of the ground
+        floor or tucked beside the stairwell for plumbing-stack reasons that have nothing to do
+        with Vastu, so a southeast, north, or northeast toilet is common by simple layout
+        constraint, not choice — the remedies above exist specifically for that situation. And
+        in the damper Dutch climate, a sea-salt bowl (the northeast-toilet remedy above) will
+        visibly clump and need refreshing faster than the "every 15 days" some sources quote —
+        treat that as a floor, not a fixed schedule, and swap it sooner if it's clumped.</p>
       </div>
 
       <div class="card">
@@ -1112,24 +1272,43 @@ function parseOrientationMentions(text){
  * callers must treat that as "couldn't identify this label", never
  * guess a room type without a real keyword hit.
  */
+/**
+ * Maps a short room-label string (as OCR reads directly off a floor
+ * plan, or as typed manually) to our HOME_ELEMENTS vocabulary. Checked
+ * in priority order (most specific first) so e.g. "Slaapkamer 1"
+ * matches PRIMARY_BEDROOM before the generic "slaapkamer" bedroom
+ * check would otherwise catch it. Returns null when nothing matches —
+ * callers must treat that as "couldn't identify this label", never
+ * guess a room type without a real keyword hit.
+ *
+ * Covers three languages a Dutch-context floor plan realistically
+ * shows labels in: English, Dutch (the plan's own native labels), and
+ * Hindi — both Devanagari script and common romanized/Hinglish
+ * spellings, since floor plans shared by Hindi-speaking homeowners
+ * are often annotated that way. OCR itself (see runOcrOnCurrentFloor)
+ * needs the matching Tesseract language data loaded for the
+ * Devanagari lines to be read at all — the regex matching here is a
+ * separate, later step that only ever sees whatever text OCR actually
+ * returned.
+ */
 function mapRoomLabelToType(text){
   if (!text) return null;
   const t = text.toLowerCase();
 
   const checks = [
-    { key: "PRIMARY_BEDROOM", re: /slaapkamer\s*1\b|bedroom\s*1\b|master\s*bedroom|hoofdslaapkamer/ },
-    { key: "POOJA_ROOM", re: /pooja|gebedsruimte|prayer\s*room|mandir/ },
-    { key: "WASHING_AREA", re: /wasruimte|wasmachine|berging|utility|laundry|washing\s*(machine|area)?/ },
-    { key: "HEAT_PUMP_AREA", re: /warmtepomp|heat\s*pump/ },
-    { key: "WATER_TANK", re: /watertank|water\s*tank|boiler/ },
-    { key: "BACKYARD", re: /achtertuin|backyard/ },
-    { key: "GARDEN", re: /\btuin\b|\bgarden\b/ },
-    { key: "STAIRS", re: /\btrap\b|trapgat|\bstairs?\b|staircase/ },
-    { key: "TOILET", re: /\bwc\b|toilet|badkamer|bathroom|\bdouche\b|\bshower\b/ },
-    { key: "LIVING_ROOM", re: /woonkamer|huiskamer|zitkamer|living\s*room/ },
-    { key: "KITCHEN", re: /\bkeuken\b|\bkitchen\b/ },
-    { key: "ENTRANCE", re: /\bentree\b|\bhal\b|\bgang\b|entrance|\bhall\b|voordeur|front\s*door/ },
-    { key: "BEDROOM_2", re: /slaapkamer\s*\d*|bedroom\s*\d*/ }, // generic fallback, checked last
+    { key: "PRIMARY_BEDROOM", re: /slaapkamer\s*1\b|bedroom\s*1\b|master\s*bedroom|hoofdslaapkamer|मुख्य\s*शयनकक्ष|मास्टर\s*बेडरूम/ },
+    { key: "POOJA_ROOM", re: /pooja|gebedsruimte|prayer\s*room|mandir|पूजा(\s*घर|\s*कक्ष)?|मंदिर/ },
+    { key: "WASHING_AREA", re: /wasruimte|wasmachine|berging|utility|laundry|washing\s*(machine|area)?|धुलाई|वॉशिंग\s*मशीन|कपड़े\s*धोने/ },
+    { key: "HEAT_PUMP_AREA", re: /warmtepomp|heat\s*pump|हीट\s*पंप/ },
+    { key: "WATER_TANK", re: /watertank|water\s*tank|boiler|पानी\s*की\s*टंकी|टंकी/ },
+    { key: "BACKYARD", re: /achtertuin|backyard|पिछवाड़ा|पिछला\s*आंगन/ },
+    { key: "GARDEN", re: /\btuin\b|\bgarden\b|बगीचा|बाग़?/ },
+    { key: "STAIRS", re: /\btrap\b|trapgat|\bstairs?\b|staircase|सीढ़ी(यां)?|सीढियां/ },
+    { key: "TOILET", re: /\bwc\b|toilet|badkamer|bathroom|\bdouche\b|\bshower\b|शौचालय|स्नानघर|टॉयलेट|बाथरूम/ },
+    { key: "LIVING_ROOM", re: /woonkamer|huiskamer|zitkamer|living\s*room|बैठक|ड्राइंग\s*रूम|लिविंग\s*रूम|बैठक\s*कक्ष/ },
+    { key: "KITCHEN", re: /\bkeuken\b|\bkitchen\b|रसोई(घर)?|किचन/ },
+    { key: "ENTRANCE", re: /\bentree\b|\bhal\b|\bgang\b|entrance|\bhall\b|voordeur|front\s*door|प्रवेश\s*द्वार|मुख्य\s*द्वार|दरवाज़ा|दरवाजा|प्रवेश/ },
+    { key: "BEDROOM_2", re: /slaapkamer\s*\d*|bedroom\s*\d*|शयनकक्ष|बेडरूम/ }, // generic fallback, checked last
   ];
 
   for (const c of checks) {
@@ -1164,6 +1343,52 @@ function renderCompassGlossary(){
     '<tbody>' + rows + '</tbody></table>';
 }
 renderCompassGlossary();
+
+/**
+ * Renders the Guide tab's three modern-diagnostic (16-zone Pancha
+ * Tattva) reference tables from the same data constants that drive
+ * the Matrix tab's toilet/kitchen remedy text — one source of truth,
+ * two presentations. Defined here (rather than beside PANCHA_TATTVA_MATRIX
+ * itself, which is declared much later once HOME_ELEMENTS/MATRIX_RULES
+ * exist) only for readability; called after those constants exist —
+ * see the deferred call near the end of this script's top-level code.
+ */
+function renderPanchaTattvaTable(){
+  const container = document.getElementById("panchaTattvaTable");
+  if (!container || typeof PANCHA_TATTVA_MATRIX === "undefined") return;
+  let rows = PANCHA_TATTVA_MATRIX.map(r =>
+    "<tr><td class=\"zone-col\">" + r.element + "</td><td>" + r.zones + "</td><td>" + r.colors +
+    "</td><td>" + r.geometry + "</td><td>" + r.metal + "</td></tr>"
+  ).join("");
+  container.innerHTML =
+    "<table><thead><tr><th class=\"zone-col\">Element</th><th>Zones</th><th>Colors</th><th>Geometry</th><th>Remedial metal</th></tr></thead>" +
+    "<tbody>" + rows + "</tbody></table>";
+}
+
+function renderZone16Table(){
+  const container = document.getElementById("zone16Table");
+  if (!container || typeof VASTU_16_ZONE_KB === "undefined") return;
+  let rows = VASTU_16_ZONE_KB.map(z =>
+    "<tr><td class=\"zone-col\">" + z.zone + "</td><td>" + z.element + "</td><td>" + z.attribute +
+    "</td><td>" + z.ideal + "</td><td>" + z.avoid + "</td></tr>"
+  ).join("");
+  container.innerHTML =
+    "<table><thead><tr><th class=\"zone-col\">Zone</th><th>Element</th><th>Core attribute</th><th>Ideal use</th><th>Avoid</th></tr></thead>" +
+    "<tbody>" + rows + "</tbody></table>";
+}
+
+function renderNonDemolitionMetalTable(){
+  const container = document.getElementById("nonDemolitionMetalTable");
+  if (!container || typeof PANCHA_TATTVA_BY_DIR8 === "undefined") return;
+  const order = ["N","NE","E","SE","S","SW","W","NW"];
+  let rows = order.map(dir =>
+    "<tr><td class=\"zone-col\">" + dir + "</td><td>" + PANCHA_TATTVA_BY_DIR8[dir].element +
+    "</td><td>" + PANCHA_TATTVA_BY_DIR8[dir].metal + "</td><td>" + PANCHA_TATTVA_BY_DIR8[dir].tape + " tape</td></tr>"
+  ).join("");
+  container.innerHTML =
+    "<table><thead><tr><th class=\"zone-col\">Direction</th><th>Element</th><th>Toilet-isolation metal strip</th><th>Or, tape alternative</th></tr></thead>" +
+    "<tbody>" + rows + "</tbody></table>";
+}
 
 function normalize(v){ return ((v % 360) + 360) % 360; }
 
@@ -2342,8 +2567,10 @@ document.getElementById("shapeSeg").addEventListener("click", (e) => {
   const shape = e.target.dataset.shape;
   document.getElementById("rectCard").style.display = shape === "rect" ? "block" : "none";
   document.getElementById("polyCard").style.display = shape === "poly" ? "block" : "none";
+  document.getElementById("wallsCard").style.display = shape === "walls" ? "block" : "none";
   document.getElementById("autoCard").style.display = shape === "auto" ? "block" : "none";
   document.getElementById("calcBrahmasthanBtn").style.display = shape === "auto" ? "none" : "block";
+  if (shape === "walls") renderWallList();
   syncCamera();
 });
 
@@ -2380,6 +2607,121 @@ renderVertexList();
 document.getElementById("addVertexBtn").addEventListener("click", () => {
   vertices.push([0,0]);
   renderVertexList();
+});
+
+/**
+ * Turtle-graphics boundary walk: turns a sequence of {length, turn}
+ * wall segments into an exact polygon vertex list, so a plot can be
+ * described the way a floor plan or tape measure actually gives it
+ * (wall lengths + corner angles) instead of requiring raw (x,y)
+ * coordinates. Starts at (0,0) heading along startHeadingDeg (0 =
+ * along +x) and, after placing each wall's endpoint, rotates the
+ * heading by that wall's own `turn` (degrees, positive = counter-
+ * clockwise/left, matching standard math convention — sign doesn't
+ * matter for the centroid itself as long as it's used consistently,
+ * only for which way the shape reads). Pure and deterministic, so the
+ * exact same output feeds polygonCentroid/isConvex as Custom entry —
+ * this is a different INPUT method, not a different (approximate)
+ * math path.
+ */
+function verticesFromWalls(segments, startHeadingDeg){
+  let heading = startHeadingDeg || 0;
+  let x = 0, y = 0;
+  const verts = [[0,0]];
+  segments.forEach(seg => {
+    const len = seg.length || 0;
+    const rad = heading * Math.PI / 180;
+    x += len * Math.cos(rad);
+    y += len * Math.sin(rad);
+    verts.push([x, y]);
+    heading += (seg.turn || 0);
+  });
+  // The walk's own last point duplicates vertex[0] once the boundary
+  // closes exactly — drop it so polygonCentroid doesn't see a
+  // zero-length final edge (harmless either way, but keeps the vertex
+  // list the same shape Custom entry would produce).
+  const last = verts[verts.length - 1];
+  if (verts.length > 1 && Math.abs(last[0]) < 1e-6 && Math.abs(last[1]) < 1e-6) verts.pop();
+  return verts;
+}
+
+/**
+ * How far the walk's actual endpoint lands from where it started —
+ * the practical check that the entered wall lengths/turns actually
+ * describe a closed shape. A few centimeters is ordinary measurement
+ * slop; anything larger means a wall length or turn angle is off (or
+ * a wall segment is missing) and the resulting centroid shouldn't be
+ * trusted yet.
+ */
+function wallClosureGapMeters(segments, startHeadingDeg){
+  let heading = startHeadingDeg || 0;
+  let x = 0, y = 0;
+  segments.forEach(seg => {
+    const rad = heading * Math.PI / 180;
+    x += (seg.length || 0) * Math.cos(rad);
+    y += (seg.length || 0) * Math.sin(rad);
+    heading += (seg.turn || 0);
+  });
+  return Math.sqrt(x*x + y*y);
+}
+
+let wallSegments = [{ length: 10, turn: 90 }, { length: 8, turn: 90 }, { length: 10, turn: 90 }, { length: 8, turn: 90 }];
+
+function updateWallClosureNote(){
+  const noteEl = document.getElementById("wallClosureNote");
+  if (!noteEl) return;
+  if (wallSegments.length < 3) {
+    noteEl.textContent = "Add at least 3 walls.";
+    return;
+  }
+  const gap = wallClosureGapMeters(wallSegments, 0);
+  if (gap < 0.05) {
+    noteEl.textContent = "Boundary closes cleanly (gap " + gap.toFixed(2) + "m).";
+    noteEl.style.color = "";
+  } else if (gap < 0.5) {
+    noteEl.textContent = "Boundary almost closes — gap of " + gap.toFixed(2) + "m at the end. " +
+      "Likely just measurement rounding; fine to proceed, or tweak a wall length to tighten it.";
+    noteEl.style.color = "";
+  } else {
+    noteEl.textContent = "Boundary doesn't close — gap of " + gap.toFixed(2) + "m between the last wall's " +
+      "end and the starting corner. Check for a missing wall or a wrong length/turn before trusting the result.";
+    noteEl.style.color = "#ff8a8a";
+  }
+}
+
+function renderWallList(){
+  const container = document.getElementById("wallList");
+  if (!container) return;
+  container.innerHTML = "";
+  wallSegments.forEach((seg, i) => {
+    const row = document.createElement("div");
+    row.className = "vertex-row";
+    row.innerHTML =
+      '<input type="number" value="' + seg.length + '" data-i="' + i + '" data-field="length" placeholder="wall ' + (i+1) + ' length (m)">' +
+      '<input type="number" value="' + seg.turn + '" data-i="' + i + '" data-field="turn" placeholder="turn (°)">' +
+      '<button data-remove="' + i + '">✕</button>';
+    container.appendChild(row);
+  });
+  container.querySelectorAll("input").forEach(inp => {
+    inp.addEventListener("input", () => {
+      const i = parseInt(inp.dataset.i, 10);
+      wallSegments[i][inp.dataset.field] = parseFloat(inp.value) || 0;
+      updateWallClosureNote();
+    });
+  });
+  container.querySelectorAll("button[data-remove]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      wallSegments.splice(parseInt(btn.dataset.remove, 10), 1);
+      renderWallList();
+      updateWallClosureNote();
+    });
+  });
+  updateWallClosureNote();
+}
+
+document.getElementById("addWallBtn").addEventListener("click", () => {
+  wallSegments.push({ length: 5, turn: 90 });
+  renderWallList();
 });
 
 /* ==================================================================
@@ -2563,12 +2905,21 @@ function showBrahmaResult(result){
   }
 
   const warnEl = document.getElementById("brahmaConvexWarning");
+  let warnings = [];
   if (!result.convex) {
-    warnEl.style.display = "block";
-    warnEl.textContent = "This is an irregular (non-convex / L-shaped) plot. " +
+    warnings.push("This is an irregular (non-convex / L-shaped) plot. " +
       "The geometric centroid can land outside the built footprint. Several " +
       "Vastu traditions treat irregular plots differently from a simple " +
-      "rectangle — verify against your specific method before relying on this point.";
+      "rectangle — verify against your specific method before relying on this point.");
+  }
+  if (typeof result.closureGap === "number" && result.closureGap >= 0.5) {
+    warnings.push("The wall boundary you entered doesn't close cleanly (a gap of " +
+      result.closureGap.toFixed(2) + "m between the last wall's end and where you started) — " +
+      "double-check your wall lengths/turn angles above before relying on this centroid.");
+  }
+  if (warnings.length) {
+    warnEl.style.display = "block";
+    warnEl.textContent = warnings.join(" ");
   } else {
     warnEl.style.display = "none";
   }
@@ -2708,6 +3059,14 @@ document.getElementById("calcBrahmasthanBtn").addEventListener("click", () => {
       const depth = parseFloat(document.getElementById("rectDepth").value);
       if (!(width > 0) || !(depth > 0)) throw new Error("Width and depth must be positive numbers.");
       result = { x: width/2, y: depth/2, area: width*depth, convex: true };
+    } else if (shape === "walls") {
+      if (wallSegments.length < 3) throw new Error("Need at least 3 walls.");
+      if (wallSegments.some(s => !(s.length > 0))) throw new Error("Every wall needs a positive length.");
+      const wallVerts = verticesFromWalls(wallSegments, 0);
+      const c = polygonCentroid(wallVerts);
+      if (!c) throw new Error("These walls don't enclose any area — check the lengths and turn angles.");
+      const gap = wallClosureGapMeters(wallSegments, 0);
+      result = { x: c.x, y: c.y, area: c.area, convex: isConvex(wallVerts), closureGap: gap };
     } else {
       if (vertices.length < 3) throw new Error("Need at least 3 corners.");
       const c = polygonCentroid(vertices);
@@ -2900,6 +3259,101 @@ const HOME_ELEMENTS = [
   { key: "HEAT_PUMP_AREA", label: "Heat pump area" },
 ];
 
+/**
+ * Modern diagnostic Vastu's non-demolition toilet-isolation protocol,
+ * as taught in popular contemporary "16-zone Pancha Tattva" courses —
+ * a different, more recent school than the classical 45-pada Brihat
+ * Samhita mandala this app otherwise sources from (see the Guide tab).
+ * The claim behind it: a toilet's drain creates a continuous
+ * "drainage vortex" for whichever zone it sits in, and embedding a
+ * thin metal strip (or, as a less invasive alternative, a wide colored
+ * tape) around the commode's base — matched to the zone's own element —
+ * is commonly cited as isolating that effect without any demolition.
+ * This is presented with the same "commonly cited" hedge as every
+ * other folk remedy in this file, not as settled fact.
+ */
+const PANCHA_TATTVA_BY_DIR8 = {
+  N:  { element: "Water",     metal: "an Aluminium strip (or a Stainless Steel strip)", tape: "Blue" },
+  NE: { element: "Water/Space",metal: "a Stainless Steel strip",                        tape: "Green or Blue" },
+  E:  { element: "Air/Wood",  metal: "a Stainless Steel or Copper strip",               tape: "Green" },
+  SE: { element: "Fire",      metal: "a Copper strip",                                  tape: "Red" },
+  S:  { element: "Fire/Earth",metal: "a Copper strip (or Brass, if the room reads more toward SSW)", tape: "Red" },
+  SW: { element: "Earth",     metal: "a Brass strip",                                   tape: "Yellow or Mustard" },
+  W:  { element: "Space",     metal: "an Iron, Lead, or Stainless Steel strip",          tape: "White or Silver" },
+  NW: { element: "Space/Air", metal: "a Stainless Steel strip",                         tape: "White or Green" }
+};
+
+function nonDemolitionToiletRemedy(dir8){
+  const p = PANCHA_TATTVA_BY_DIR8[dir8];
+  return "Non-demolition isolation (modern diagnostic method, " + p.element + " zone): cut a narrow " +
+    "(3-4mm) groove in the floor around 3 or 4 sides of the commode base and embed " + p.metal +
+    " flush with the tile, sealing it with epoxy or grout — or, as a lighter-touch alternative, apply a " +
+    "3-4 inch wide " + p.tape + " PVC/vinyl tape continuously around the same base directly on the tiles. " +
+    "Either is described as cutting off the zone's drainage effect without breaking any tile or moving plumbing.";
+}
+
+/**
+ * Same source/family as the toilet protocol above: a buffer slab
+ * placed directly under a stove is commonly cited as reconciling the
+ * cooktop's own Fire element with a zone whose element would otherwise
+ * clash with it (Water in the north/northeast, Space in the west/
+ * northwest) — Wood/Green bridges Fire and Water, Earth/Yellow bridges
+ * Fire and Space, per the Pancha Tattva generative cycle.
+ */
+const KITCHEN_BURNER_BUFFER_SLAB = {
+  N:  "a Green marble or stone slab (e.g. a green Baroda-marble-style slab, or any green granite/composite readily available at a Dutch kitchen showroom) placed directly under the hob",
+  NE: "a Green marble or stone slab placed directly under the hob",
+  W:  "a Yellow marble or stone slab (e.g. a yellow Jaisalmer-marble-style slab, or a yellow/ochre granite or quartz composite) placed directly under the hob",
+  NW: "a Yellow marble or stone slab placed directly under the hob"
+};
+
+function nonDemolitionBurnerRemedy(dir8){
+  const slab = KITCHEN_BURNER_BUFFER_SLAB[dir8];
+  if (!slab) return null;
+  return "Non-demolition burner buffer (modern diagnostic method): place " + slab +
+    ", used as a Wood/Earth buffer between the hob's Fire element and this zone's own element — a commonly " +
+    "cited way to soften the elemental clash without relocating the kitchen.";
+}
+
+/**
+ * The 16-zone Pancha Tattva reference table (element, colors,
+ * geometry, remedial metal, core life attribute, ideal use, and
+ * critical dosha) used to populate the Guide tab's reference card.
+ * This is a separate, modern, non-canonical layer — see the sourcing
+ * note in the Guide tab before treating any single line here as
+ * settled fact.
+ */
+const VASTU_16_ZONE_KB = [
+  { zone: "N",   element: "Water",      attribute: "New opportunities, career, income flow", ideal: "Main entrance, cash locker, living room", avoid: "Kitchen/stove, toilet, red or yellow decor" },
+  { zone: "NNE", element: "Water",      attribute: "Health, immunity, cellular healing", ideal: "Medicine storage, doctor's consultation area", avoid: "Toilet, kitchen/fire, heavy clutter" },
+  { zone: "NE",  element: "Water/Space",attribute: "Mental clarity, wisdom, spiritual focus", ideal: "Pooja/meditation area, open space, water feature", avoid: "Toilet, kitchen/stove, heavy clutter or structure" },
+  { zone: "ENE", element: "Air/Wood",   attribute: "Recreation, joy, emotional refresh", ideal: "Family lounge, hobby room", avoid: "Toilet (saps mood), heavy clutter" },
+  { zone: "E",   element: "Air/Wood",   attribute: "Social connectivity, networking", ideal: "Living room, main hall", avoid: "Toilet, heavy storage" },
+  { zone: "ESE", element: "Air/Wood",   attribute: "Analysis, churning, decision-making", ideal: "Washing machine, study desk, toilet (favorable here)", avoid: "Master bedroom (overthinking, insomnia)" },
+  { zone: "SE",  element: "Fire",       attribute: "Cash liquidity, digestive fire, vitality", ideal: "Kitchen/stove (primary location), electrical board", avoid: "Water tank, toilet, blue/black decor" },
+  { zone: "SSE", element: "Fire",       attribute: "Inner strength, physical stamina", ideal: "Gym/fitness area", avoid: "Toilet (weakens confidence)" },
+  { zone: "S",   element: "Fire/Earth", attribute: "Fame, brand equity, restful sleep", ideal: "Master bedroom", avoid: "Underground water tank, unscreened toilet" },
+  { zone: "SSW", element: "Earth",      attribute: "Waste elimination, expenditure", ideal: "Toilet (favorable here), dustbin, drainage exit", avoid: "Master bedroom, cash safe, study desk" },
+  { zone: "SW",  element: "Earth",      attribute: "Relationships, family stability, core skills", ideal: "Master bedroom (head of household), heavy storage", avoid: "Toilet, kitchen/stove, water tank" },
+  { zone: "WSW", element: "Space/Earth",attribute: "Education, knowledge retention, savings", ideal: "Study desk, library, safe", avoid: "Toilet" },
+  { zone: "W",   element: "Space",      attribute: "Gains, profits, manifest returns", ideal: "Dining room, accounts/sales area, safe", avoid: "Fire element, defective toilet" },
+  { zone: "WNW", element: "Space",      attribute: "Detoxification, emotional venting", ideal: "Guest toilet (favorable here), washing machine", avoid: "Master bedroom (linked to low mood)" },
+  { zone: "NW",  element: "Space/Air",  attribute: "Support systems, banking, alliances", ideal: "Guest bedroom, finished-goods storage", avoid: "Kitchen/fire" },
+  { zone: "NNW", element: "Water",      attribute: "Attraction, desire, marital intimacy", ideal: "Bedroom for couples, wardrobes", avoid: "Toilet, fire element" }
+];
+
+const PANCHA_TATTVA_MATRIX = [
+  { element: "Water (Jal)",   zones: "N, NNE, NNW",        colors: "Blue, Black",          geometry: "Wavy",       metal: "Aluminium / Steel" },
+  { element: "Air/Wood (Vayu)",zones: "NE, ENE, E, ESE",   colors: "Green, Brown",         geometry: "Rectangular",metal: "Stainless Steel / Copper" },
+  { element: "Fire (Agni)",   zones: "SE, SSE, S",         colors: "Red, Orange, Pink",    geometry: "Triangular", metal: "Copper" },
+  { element: "Earth (Prithvi)",zones: "SSW, SW",           colors: "Yellow, Mustard, Ochre",geometry: "Square",    metal: "Brass" },
+  { element: "Space (Akash)", zones: "WSW, W, WNW, NW",    colors: "White, Silver, Grey",  geometry: "Circular",   metal: "Iron / Lead / Stainless Steel" }
+];
+
+renderPanchaTattvaTable();
+renderZone16Table();
+renderNonDemolitionMetalTable();
+
 const MATRIX_RULES = {
   ENTRANCE: {
     ideal: ["N","NE","E"],
@@ -2937,7 +3391,8 @@ const MATRIX_RULES = {
     remedies: {
       N: [
         "Keep this zone tidy and uncluttered — the north is associated with wealth flow, so avoid heavy storage or clutter building up around the cooktop.",
-        "A small copper item kept nearby is a commonly cited accent for a north-zone kitchen."
+        "A small copper item kept nearby is a commonly cited accent for a north-zone kitchen.",
+        nonDemolitionBurnerRemedy("N")
       ],
       S: [
         "Face east while cooking regardless of the room's own zone.",
@@ -2945,7 +3400,8 @@ const MATRIX_RULES = {
       ],
       NW: [
         "Keep the cooktop positioned so the cook faces east while cooking.",
-        "Considered a workable secondary choice in many sources without further mitigation needed."
+        "Considered a workable secondary choice in many sources without further mitigation needed.",
+        nonDemolitionBurnerRemedy("NW")
       ],
       W: [
         "Face east while cooking regardless of the room's own zone.",
@@ -2958,7 +3414,8 @@ const MATRIX_RULES = {
       NE: [
         "A copper vessel of water or sea salt in a bowl, refreshed weekly, is a commonly cited symbolic remedy.",
         "A Tulsi (holy basil) plant kept near this zone (not inside the kitchen itself) is a specific plant some sources associate with the northeast.",
-        "Keep this zone especially clean and uncluttered."
+        "Keep this zone especially clean and uncluttered.",
+        nonDemolitionBurnerRemedy("NE")
       ],
       SW: [
         "A tied red cloth or thread near the cooktop is one folk remedy cited in some sources.",
@@ -3008,33 +3465,42 @@ const MATRIX_RULES = {
     remedies: {
       E: [
         "Keep the space well-ventilated with natural light where possible.",
-        "Keep the door closed when not in use; commonly treated as workable with that basic care."
+        "Keep the door closed when not in use; commonly treated as workable with that basic care.",
+        nonDemolitionToiletRemedy("E")
       ],
       S: [
         "Keep the commode positioned so usage faces north or south, not east-west.",
         "Keep the door closed when not in use.",
-        "Lighter wall colors (white, pink, or light shades) are a commonly cited mitigation for a south-zone toilet."
+        "Lighter wall colors (white, pink, or light shades) are a commonly cited mitigation for a south-zone toilet.",
+        nonDemolitionToiletRemedy("S")
       ],
       SE: [
         "A strip of red cloth or red tape on the door or the adjoining wall is a specific folk remedy commonly cited for a southeast toilet, symbolically containing the water-versus-fire elemental clash between a wet area and the southeast's fire element.",
         "Keep a working exhaust fan running here more consistently than in other zones.",
         "Avoid sharing a wall directly with the kitchen's cooktop side if at all possible.",
-        "Keep the door closed when not in use, and the space especially clean and dry."
+        "Keep the door closed when not in use, and the space especially clean and dry.",
+        nonDemolitionToiletRemedy("SE"),
+        "Modern diagnostic Vastu sources describe this specific placement as continuously draining cash liquidity and delaying payments, since the southeast is treated as the seat of the Fire/cash-flow element — treat the isolation strip/tape above as the priority remedy here, not an optional extra."
       ],
       N: [
         "A partition or plant screen toward the adjacent NE zone is a common non-demolition mitigation.",
-        "Keep the door closed when not in use."
+        "Keep the door closed when not in use.",
+        nonDemolitionToiletRemedy("N"),
+        "Modern diagnostic Vastu sources treat a north-zone toilet as flushing away new opportunities and career/income flow (this zone's water element is also linked to Kubera, the wealth-deity) — remove any red, orange, or yellow decor from the room, since these are the element's traditional 'anti-colors', and favor stainless steel or aluminium fixtures instead."
       ],
       NE: [
         "A northeast yantra placed elsewhere in the NE zone of the home is a symbolic remedy cited in some sources.",
         "A money plant or spider plant kept just outside the door (not inside the wet area) is a commonly cited air/energy remedy.",
         "Keep this toilet especially clean, and keep the door closed at all times.",
-        "Burning camphor or an aromatic candle periodically is a commonly cited folk remedy."
+        "Burning camphor or an aromatic candle periodically is a commonly cited folk remedy.",
+        nonDemolitionToiletRemedy("NE"),
+        "This is treated as the single most sensitive placement in the whole home — the northeast corresponds to the 'head' of the Vastu Purusha and is linked to mental clarity and neurological health. Where genuinely possible, the most-cited first choice is to cap the water inlet and discontinue use rather than rely on remedies alone; if it must stay in active use, keep a bowl of raw, unrefined sea salt in a glass or ceramic dish inside the room and replace it every 1-2 weeks (a commonly cited symbolic absorbent for 'stagnant' energy — refresh more often in a humid Dutch bathroom, where it will visibly clump faster), and keep the space brightly lit with cool-white lighting."
       ],
       SW: [
         "A tied red cloth/thread near the plumbing, or a small pyramid on the outside of the SW wall, are folk remedies cited in some sources.",
         "A Rahu Yantra placed in this zone is a specific remedy some traditions cite for the southwest.",
-        "Keep the toilet door closed at all times and the space especially clean."
+        "Keep the toilet door closed at all times and the space especially clean.",
+        nonDemolitionToiletRemedy("SW")
       ]
     }
   },
@@ -3879,6 +4345,197 @@ function buildingCentroid(rooms){
   return { x: cx/totalArea, y: cy/totalArea, totalArea };
 }
 
+/**
+ * Automatic Brahmasthan detection from an uploaded floor plan photo —
+ * the actual "AI understand the floor plan" piece: instead of always
+ * approximating a photo's center as the image's own pixel midpoint
+ * (which is wrong whenever there's a title block, legend, wide margin,
+ * or dimension strip on one side, and wrong for any non-rectangular
+ * footprint even with no margin at all), this traces the drawn
+ * building outline itself and returns its true area centroid.
+ *
+ * Method: binarize the image (dark ink = wall/text lines, light =
+ * background), then flood-fill from every border pixel through light
+ * pixels only — flood fill can't cross a dark line, so it marks
+ * everything reachable from the page edge as "exterior". Whatever it
+ * never reaches (interior room space plus the wall lines enclosing
+ * it) is the building's footprint; its pixel-mean position is exactly
+ * the same area-centroid computation polygonCentroid gives for a
+ * clean vector outline, just computed from a raster image instead.
+ *
+ * Honest limitation: real floor plans almost always draw door
+ * openings as a gap in the wall line with only a swing arc, not a
+ * closed line — so the exterior flood-fill frequently leaks straight
+ * through every doorway into every room, "outside" ends up eating
+ * almost the whole image, and there's no meaningful enclosed footprint
+ * left to average. This is detected via coveragePct (how much of the
+ * image the flood-fill reached) and reported honestly as a fallback
+ * to the cruder ink-bounding-box method rather than silently returning
+ * a wrong point — see detectFloorPlanBrahmasthan below, which is what
+ * callers should actually use.
+ */
+function detectFloorPlanFootprint(sourceCanvas, options){
+  options = options || {};
+  const maxDim = options.maxDim || 260;
+  const threshold = typeof options.threshold === "number" ? options.threshold : 200;
+
+  const scale = Math.min(1, maxDim / Math.max(sourceCanvas.width, sourceCanvas.height));
+  const w = Math.max(1, Math.round(sourceCanvas.width * scale));
+  const h = Math.max(1, Math.round(sourceCanvas.height * scale));
+
+  const tmp = document.createElement("canvas");
+  tmp.width = w; tmp.height = h;
+  const tctx = tmp.getContext("2d");
+  tctx.drawImage(sourceCanvas, 0, 0, w, h);
+  const data = tctx.getImageData(0, 0, w, h).data;
+
+  const dark = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
+    const gray = 0.299*r + 0.587*g + 0.114*b;
+    dark[i] = gray < threshold ? 1 : 0;
+  }
+
+  const outside = new Uint8Array(w * h);
+  const stack = [];
+  function pushIfLight(x, y){
+    if (x < 0 || x >= w || y < 0 || y >= h) return;
+    const idx = y*w + x;
+    if (dark[idx] || outside[idx]) return;
+    outside[idx] = 1;
+    stack.push(idx);
+  }
+  for (let x = 0; x < w; x++) { pushIfLight(x, 0); pushIfLight(x, h-1); }
+  for (let y = 0; y < h; y++) { pushIfLight(0, y); pushIfLight(w-1, y); }
+  while (stack.length) {
+    const idx = stack.pop();
+    const x = idx % w, y = (idx / w) | 0;
+    pushIfLight(x+1, y); pushIfLight(x-1, y); pushIfLight(x, y+1); pushIfLight(x, y-1);
+  }
+
+  let sumX = 0, sumY = 0, count = 0;
+  let minX = w, maxX = 0, minY = h, maxY = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y*w + x;
+      if (!outside[idx]) {
+        sumX += x; sumY += y; count++;
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+      }
+    }
+  }
+  const coveragePct = 1 - (count / (w*h));
+  if (count === 0) return { count: 0, coveragePct: 1 };
+
+  const invScale = 1/scale;
+  return {
+    x: (sumX/count) * invScale,
+    y: (sumY/count) * invScale,
+    pixelArea: count * invScale * invScale,
+    boundingBox: { x: minX*invScale, y: minY*invScale, w: (maxX-minX)*invScale, h: (maxY-minY)*invScale },
+    coveragePct: coveragePct,
+    count: count
+  };
+}
+
+/**
+ * Fallback method: the bounding box of every dark ("ink") pixel in
+ * the image, trimmed to the 2nd-98th percentile on each axis so a
+ * single stray mark (a logo, a stamp, a scale bar off in a corner)
+ * can't drag the box out to the whole page. Cruder than a true
+ * outline trace — it can't tell an L-shaped plot's true centroid from
+ * its rectangle's — but it reliably excludes blank margins, which the
+ * plain image-midpoint approximation this app used before could not.
+ */
+function detectInkBoundingBox(sourceCanvas, options){
+  options = options || {};
+  const maxDim = options.maxDim || 260;
+  const threshold = typeof options.threshold === "number" ? options.threshold : 200;
+
+  const scale = Math.min(1, maxDim / Math.max(sourceCanvas.width, sourceCanvas.height));
+  const w = Math.max(1, Math.round(sourceCanvas.width * scale));
+  const h = Math.max(1, Math.round(sourceCanvas.height * scale));
+
+  const tmp = document.createElement("canvas");
+  tmp.width = w; tmp.height = h;
+  const tctx = tmp.getContext("2d");
+  tctx.drawImage(sourceCanvas, 0, 0, w, h);
+  const data = tctx.getImageData(0, 0, w, h).data;
+
+  const xs = [], ys = [];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y*w + x) * 4;
+      const gray = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
+      if (gray < threshold) { xs.push(x); ys.push(y); }
+    }
+  }
+  if (xs.length === 0) return null;
+  xs.sort((a,b) => a-b);
+  ys.sort((a,b) => a-b);
+  const pct = (arr, p) => arr[Math.max(0, Math.min(arr.length-1, Math.round(p * (arr.length-1))))];
+  const minX = pct(xs, 0.02), maxX = pct(xs, 0.98);
+  const minY = pct(ys, 0.02), maxY = pct(ys, 0.98);
+
+  const invScale = 1/scale;
+  return {
+    x: ((minX+maxX)/2) * invScale,
+    y: ((minY+maxY)/2) * invScale,
+    boundingBox: { x: minX*invScale, y: minY*invScale, w: (maxX-minX)*invScale, h: (maxY-minY)*invScale }
+  };
+}
+
+/**
+ * The function callers should actually use: tries the real outline
+ * trace first, and only falls back to the cruder bounding-box method
+ * when the outline trace's own coverage numbers say it isn't
+ * trustworthy (either it found almost nothing enclosed — background
+ * threshold wrong or a near-blank image — or it found almost
+ * everything enclosed, the door-gap leak-through case described
+ * above). Always reports which method actually produced the result,
+ * so the UI can show that honestly rather than presenting a fallback
+ * guess with the same confidence as a real trace.
+ */
+function detectFloorPlanBrahmasthan(sourceCanvas, options){
+  const outline = detectFloorPlanFootprint(sourceCanvas, options);
+  const coveragePct = outline.coveragePct;
+  // A believable enclosed footprint typically fills somewhere between
+  // ~10% and ~80% of the image — outside that range treat the trace
+  // as unreliable (either nothing closed, or everything leaked
+  // through) and fall back rather than trust it.
+  const outlineLooksReliable = outline.count > 0 && (1 - coveragePct) > 0.10 && (1 - coveragePct) < 0.80;
+  if (outlineLooksReliable) {
+    return { x: outline.x, y: outline.y, method: "outline", coveragePct: coveragePct, boundingBox: outline.boundingBox };
+  }
+  const bbox = detectInkBoundingBox(sourceCanvas, options);
+  if (bbox) {
+    return { x: bbox.x, y: bbox.y, method: "bounding-box", coveragePct: coveragePct, boundingBox: bbox.boundingBox };
+  }
+  // Last resort: the plain image midpoint this app always used before —
+  // only reached if the image is essentially blank at the sampled
+  // resolution.
+  return { x: sourceCanvas.width/2, y: sourceCanvas.height/2, method: "image-midpoint", coveragePct: coveragePct, boundingBox: null };
+}
+
+/**
+ * Single source of truth for "what pixel point on this floor plan
+ * counts as its Brahmasthan right now" — an explicitly auto-detected
+ * or manually-set point if one exists for this floor, otherwise the
+ * plain image midpoint (the old, cruder default). Every OCR/manual-
+ * tap/zone-overlay bearing calculation should go through this rather
+ * than each computing "img.width/2, img.height/2" separately, so a
+ * single detect/adjust action fixes every direction reading for this
+ * floor at once.
+ */
+function getPlanCentroidPx(entry){
+  if (!entry) return null;
+  if (entry.detectedCentroid) return entry.detectedCentroid;
+  const img = entry.effectiveCanvas;
+  if (!img) return null;
+  return { x: img.width / 2, y: img.height / 2 };
+}
+
 // Bearing (0=N, 90=E, 180=S, 270=W) from the building centroid to a
 // room's own center, given the x=east/y=south convention above.
 function roomBearingFromCentroid(room, centroid){
@@ -4050,14 +4707,18 @@ function applyFloorPlanTransform(partial){
   const entry = floorPlans[currentFloorIndex];
   entry.transform = Object.assign({}, entry.transform, partial);
   updateEffectiveCanvas(entry);
-  // A flip/rotate invalidates any previous OCR positions for this
-  // floor — clear them and automatically re-read the text on the
-  // corrected orientation, the same as a fresh upload, rather than
-  // silently showing stale, now-wrong directions or waiting for a
-  // manual re-tap.
+  // A flip/rotate invalidates any previous OCR positions AND any
+  // previously detected Brahmasthan point for this floor (its pixel
+  // coordinates were measured against the old orientation/dimensions)
+  // — clear both and automatically redetect/re-read on the corrected
+  // orientation, the same as a fresh upload, rather than silently
+  // showing a now-wrong center or stale directions.
   delete ocrResultsByFloor[currentFloorIndex];
+  delete entry.detectedCentroid;
+  delete entry.detectionMethod;
   renderOcrResults();
   if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
+  runBrahmaDetectionOnCurrentFloor(document.getElementById("planDetectStatus"));
   runOcrOnCurrentFloor();
 }
 
@@ -4098,6 +4759,69 @@ document.getElementById("flipVBtn").addEventListener("click", () => {
  * zone overlay) then adds this offset before sectorizing — this is
  * the actual "sync with the compass" fix.
  */
+/**
+ * Runs the outline-trace Brahmasthan detector against the current
+ * floor's image, stores the result, re-derives every existing mark
+ * against it, and reports which method actually worked (see
+ * detectFloorPlanBrahmasthan's own doc comment for why it sometimes
+ * has to fall back).
+ */
+function runBrahmaDetectionOnCurrentFloor(statusEl){
+  if (currentFloorIndex < 0) {
+    statusEl.textContent = "Upload a floor plan image first.";
+    return false;
+  }
+  const entry = floorPlans[currentFloorIndex];
+  const detected = detectFloorPlanBrahmasthan(entry.effectiveCanvas);
+  entry.detectedCentroid = { x: detected.x, y: detected.y };
+  entry.detectionMethod = detected.method;
+  if (detected.method === "outline") {
+    statusEl.textContent = "Found the building's own outline and centered on it (covering about " +
+      Math.round((1 - detected.coveragePct) * 100) + "% of the image) — check the marked point against the picture below.";
+  } else if (detected.method === "bounding-box") {
+    statusEl.textContent = "Couldn't close a full outline (open doorways in the drawing usually cause this) — " +
+      "centered on the drawing's own ink instead, which still excludes any blank margin/title block. " +
+      "Check the marked point below, and use \"Set Brahmasthan point manually\" if it looks off.";
+  } else {
+    statusEl.textContent = "Couldn't find any drawing to trace on this image — falling back to the plain image " +
+      "center. Use \"Set Brahmasthan point manually\" to correct it.";
+  }
+  rederiveOcrBearings(entry, currentFloorIndex);
+  renderOcrResults();
+  drawPlan2d(rooms, lastDesignCentroid);
+  return true;
+}
+
+document.getElementById("detectBrahmaBtn").addEventListener("click", () => {
+  runBrahmaDetectionOnCurrentFloor(document.getElementById("planDetectStatus"));
+});
+
+document.getElementById("setBrahmaPointBtn").addEventListener("click", () => {
+  if (currentFloorIndex < 0) {
+    document.getElementById("planDetectStatus").textContent = "Upload a floor plan image first.";
+    return;
+  }
+  settingBrahmasthanPoint = !settingBrahmasthanPoint;
+  document.getElementById("setBrahmaPointBtn").textContent = settingBrahmasthanPoint ?
+    "Tap the plan now to set the point…" : "Set Brahmasthan point manually (tap the plan)";
+  if (settingBrahmasthanPoint) {
+    document.getElementById("planDetectStatus").textContent = "Tap anywhere on the floor plan image below to set its Brahmasthan point.";
+  }
+});
+
+/**
+ * The single "just do it" button: auto-detects the Brahmasthan point
+ * first (fast, no network, needed before OCR bearings can be computed
+ * against the right center), then runs the multi-language OCR pass so
+ * every recognized room label gets a direction relative to that point
+ * in one action — the "make it simple to use" path.
+ */
+document.getElementById("analyzeFloorPlanBtn").addEventListener("click", async () => {
+  const statusEl = document.getElementById("planDetectStatus");
+  if (!runBrahmaDetectionOnCurrentFloor(statusEl)) return;
+  await runOcrOnCurrentFloor();
+});
+
 document.getElementById("calibrateNorthBtn").addEventListener("click", () => {
   const statusEl = document.getElementById("northCalStatus");
   if (currentFloorIndex < 0) { statusEl.textContent = "Upload a floor plan image first."; return; }
@@ -4110,14 +4834,7 @@ document.getElementById("calibrateNorthBtn").addEventListener("click", () => {
   // offset, rather than only affecting marks made from now on.
   const results = ocrResultsByFloor[currentFloorIndex];
   if (results && floorPlans[currentFloorIndex].effectiveCanvas) {
-    const img = floorPlans[currentFloorIndex].effectiveCanvas;
-    const centerX = img.width / 2, centerY = img.height / 2;
-    results.forEach(r => {
-      if (typeof r.x !== "number" || typeof r.y !== "number") return; // compass-captured entries have no pixel position to re-derive from
-      const pixelBearing = roomBearingFromCentroid({ x: r.x, y: r.y, w: 0, d: 0 }, { x: centerX, y: centerY });
-      r.bearing = normalize(pixelBearing + heading);
-      r.dir8 = sectorName(sectorIndex(r.bearing, 8), 8);
-    });
+    rederiveOcrBearings(floorPlans[currentFloorIndex], currentFloorIndex);
   }
   renderOcrResults();
   if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
@@ -4210,9 +4927,13 @@ document.getElementById("floorPlanUpload").addEventListener("change", (e) => {
           document.getElementById("plan2dCard").style.display = "block";
           renderFloorPlanTabs();
           if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
-          // Auto-run text recognition on upload — no manual button
-          // press required. The button still exists to re-scan (e.g.
-          // after a flip/rotate).
+          // Auto-run on upload — no manual button press required: find
+          // the building's own center first (fast, offline, and OCR's
+          // bearings depend on it), then read whatever text is on the
+          // image. The buttons still exist to re-run either step by
+          // itself (e.g. after a flip/rotate, or to override the
+          // detected point).
+          runBrahmaDetectionOnCurrentFloor(document.getElementById("planDetectStatus"));
           runOcrOnCurrentFloor();
         }
       };
@@ -4424,16 +5145,48 @@ async function runOcrOnCurrentFloorInner(statusEl){
   // cases noticeably more legible to the OCR engine at negligible cost.
   ocrCanvas = preprocessForOcr(ocrCanvas);
 
-  try {
-    const result = await Tesseract.recognize(ocrCanvas, "eng", {
-      logger: (m) => {
-        if (m.status === "recognizing text" && typeof m.progress === "number") {
-          statusEl.textContent = "Reading text on this floor's image… " + Math.round(m.progress * 100) + "%";
-        } else if (m.status) {
-          statusEl.textContent = m.status.charAt(0).toUpperCase() + m.status.slice(1) + "…";
+  /**
+   * Reads this floor plan's text in English, Dutch, and Hindi in one
+   * pass — a Dutch floor plan may have its own printed Dutch labels,
+   * English annotations added on top, and/or Hindi (Devanagari)
+   * labels added by a Hindi-speaking homeowner. Tesseract supports
+   * mixing scripts like this directly (a single "+"-joined language
+   * string), each additional language just needs its own trained-data
+   * file fetched once (cached after that). Falls back to fewer
+   * languages if a given trained-data file can't be fetched (e.g. a
+   * flaky connection on the Hindi file specifically) rather than
+   * failing the whole read — the fallback still returns whatever the
+   * remaining languages can find, rather than nothing at all.
+   */
+  const OCR_LANGUAGE_ATTEMPTS = ["eng+nld+hin", "eng+nld", "eng"];
+  let result = null, lastOcrError = null;
+  for (let li = 0; li < OCR_LANGUAGE_ATTEMPTS.length; li++) {
+    const langs = OCR_LANGUAGE_ATTEMPTS[li];
+    try {
+      statusEl.textContent = (li === 0 ?
+        "Loading English + Dutch + Hindi text models (first time only, needs internet)…" :
+        "Retrying with fewer languages (" + langs + ") after a load problem…");
+      result = await Tesseract.recognize(ocrCanvas, langs, {
+        logger: (m) => {
+          if (m.status === "recognizing text" && typeof m.progress === "number") {
+            statusEl.textContent = "Reading text (" + langs + ")… " + Math.round(m.progress * 100) + "%";
+          } else if (m.status) {
+            statusEl.textContent = m.status.charAt(0).toUpperCase() + m.status.slice(1) + " (" + langs + ")…";
+          }
         }
-      }
-    });
+      });
+      break; // succeeded — stop trying shorter fallback language sets
+    } catch (e) {
+      lastOcrError = e;
+      result = null;
+    }
+  }
+  if (!result) {
+    statusEl.textContent = "Could not run text recognition in any language combination — check your internet connection and try again.";
+    return;
+  }
+
+  try {
     // Coordinates are in the (possibly upscaled) OCR canvas — divide
     // back down by scaleFactor so positions match the effectiveCanvas
     // (and therefore the displayed image) exactly.
@@ -4445,7 +5198,7 @@ async function runOcrOnCurrentFloorInner(statusEl){
         y: ((w.bbox.y0 + w.bbox.y1) / 2) / scaleFactor
       }));
 
-    const centerX = sourceCanvas.width / 2, centerY = sourceCanvas.height / 2;
+    const centroidPx = getPlanCentroidPx(entry);
     const northOffsetDeg = entry.northOffsetDeg || 0;
     const found = [];
     const seenTypes = new Set();
@@ -4454,7 +5207,7 @@ async function runOcrOnCurrentFloorInner(statusEl){
       if (!type) return;
       const pixelBearing = roomBearingFromCentroid(
         { x: w.x, y: w.y, w: 0, d: 0 },
-        { x: centerX, y: centerY }
+        centroidPx
       );
       const bearing = normalize(pixelBearing + northOffsetDeg);
       const dir8 = sectorName(sectorIndex(bearing, 8), 8);
@@ -4516,6 +5269,27 @@ document.getElementById("runOcrBtn").addEventListener("click", runOcrOnCurrentFl
    directly on the floor plan image, whether or not automatic text
    detection found or correctly identified it. ---------- */
 let pendingManualPoint = null; // {x, y} in the floor plan image's own pixel space
+let settingBrahmasthanPoint = false; // true while the next planCanvas tap should set the Brahmasthan point instead of tagging a room
+
+/**
+ * Re-measures every existing OCR/manual room mark on this floor
+ * against its CURRENT Brahmasthan point and north offset — called any
+ * time either of those changes (auto-detect, manual point override,
+ * or a fresh compass calibration) so old marks don't silently keep
+ * pointing at a stale reference.
+ */
+function rederiveOcrBearings(entry, floorIdx){
+  const results = ocrResultsByFloor[floorIdx];
+  if (!results || !entry.effectiveCanvas) return;
+  const centroidPx = getPlanCentroidPx(entry);
+  const northOffsetDeg = entry.northOffsetDeg || 0;
+  results.forEach(r => {
+    if (typeof r.x !== "number" || typeof r.y !== "number") return; // compass-captured entries have no pixel position to re-derive from
+    const pixelBearing = roomBearingFromCentroid({ x: r.x, y: r.y, w: 0, d: 0 }, centroidPx);
+    r.bearing = normalize(pixelBearing + northOffsetDeg);
+    r.dir8 = sectorName(sectorIndex(r.bearing, 8), 8);
+  });
+}
 
 function populateManualMarkSelect(){
   const sel = document.getElementById("manualMarkTypeSelect");
@@ -4552,10 +5326,23 @@ document.getElementById("planCanvas").addEventListener("click", (e) => {
   // drawPlan2d stretches the floor plan image to fill the canvas
   // exactly (0,0,w,h) — so mapping a click back to image-space is a
   // simple ratio, no offset/letterboxing to account for.
-  pendingManualPoint = {
-    x: clickX * (img.width / canvas.width),
-    y: clickY * (img.height / canvas.height)
-  };
+  const imgX = clickX * (img.width / canvas.width);
+  const imgY = clickY * (img.height / canvas.height);
+
+  if (settingBrahmasthanPoint) {
+    floorPlans[currentFloorIndex].detectedCentroid = { x: imgX, y: imgY };
+    floorPlans[currentFloorIndex].detectionMethod = "manual";
+    settingBrahmasthanPoint = false;
+    document.getElementById("setBrahmaPointBtn").textContent = "Set Brahmasthan point manually (tap the plan)";
+    document.getElementById("planDetectStatus").textContent =
+      "Brahmasthan point set manually at your tap — every direction below has been re-measured against it.";
+    rederiveOcrBearings(floorPlans[currentFloorIndex], currentFloorIndex);
+    renderOcrResults();
+    drawPlan2d(rooms, lastDesignCentroid);
+    return;
+  }
+
+  pendingManualPoint = { x: imgX, y: imgY };
   document.getElementById("manualMarkPrompt").style.display = "block";
 });
 
@@ -4567,11 +5354,10 @@ document.getElementById("manualMarkCancelBtn").addEventListener("click", () => {
 document.getElementById("manualMarkConfirmBtn").addEventListener("click", () => {
   if (!pendingManualPoint || currentFloorIndex < 0) return;
   const type = document.getElementById("manualMarkTypeSelect").value;
-  const img = floorPlans[currentFloorIndex].effectiveCanvas;
-  const centerX = img.width / 2, centerY = img.height / 2;
+  const centroidPx = getPlanCentroidPx(floorPlans[currentFloorIndex]);
   const pixelBearing = roomBearingFromCentroid(
     { x: pendingManualPoint.x, y: pendingManualPoint.y, w: 0, d: 0 },
-    { x: centerX, y: centerY }
+    centroidPx
   );
   const bearing = normalize(pixelBearing + (floorPlans[currentFloorIndex].northOffsetDeg || 0));
   const dir8 = sectorName(sectorIndex(bearing, 8), 8);
@@ -4724,13 +5510,42 @@ function drawPlan2d(roomsList, centroid){
     ctx.globalAlpha = 1.0;
   }
 
+  // Where the zone overlay/marker are centered on THIS canvas: the
+  // detected/manual Brahmasthan point if this floor has one, mapped
+  // from image-pixel space into the canvas's own (possibly different
+  // size) pixel space — falling back to the canvas midpoint only when
+  // there's no image loaded at all.
+  let overlayCx = w / 2, overlayCy = h / 2;
+  if (currentImg) {
+    const centroidPx = getPlanCentroidPx(floorPlans[currentFloorIndex]);
+    if (centroidPx) {
+      overlayCx = centroidPx.x * (w / currentImg.width);
+      overlayCy = centroidPx.y * (h / currentImg.height);
+    }
+  }
+
   if (zoneOverlayOn && currentImg) {
     const overlayType = document.getElementById("zoneOverlaySelect").value;
-    drawZoneOverlay(ctx, w / 2, h / 2, Math.min(w, h) / 2 - 10, overlayType, overlaySectorCount, floorPlans[currentFloorIndex].northOffsetDeg || 0);
+    drawZoneOverlay(ctx, overlayCx, overlayCy, Math.min(w, h) / 2 - 10, overlayType, overlaySectorCount, floorPlans[currentFloorIndex].northOffsetDeg || 0);
   }
 
   if (currentImg) {
     drawOcrMarkers(ctx, ocrResultsByFloor[currentFloorIndex], currentImg.width, currentImg.height, w, h);
+    // The Brahmasthan point itself — always shown when an image is
+    // loaded, whether it came from auto-detection, the bounding-box
+    // fallback, or a manual tap, so it's never invisible/implicit.
+    const methodLabel = { outline: "auto-detected", "bounding-box": "auto (bounding-box)", manual: "set manually", "image-midpoint": "image midpoint (fallback)" }
+      [floorPlans[currentFloorIndex].detectionMethod] || "image midpoint (default)";
+    ctx.beginPath();
+    ctx.moveTo(overlayCx - 10, overlayCy); ctx.lineTo(overlayCx + 10, overlayCy);
+    ctx.moveTo(overlayCx, overlayCy - 10); ctx.lineTo(overlayCx, overlayCy + 10);
+    ctx.strokeStyle = "#e64545"; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(overlayCx, overlayCy, 5, 0, 2*Math.PI);
+    ctx.strokeStyle = "#e64545"; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = "#1a1a2e";
+    ctx.font = "bold 9px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Brahmasthan (" + methodLabel + ")", overlayCx, overlayCy - 14);
   }
 
   // The manually-typed room boxes below live in their own made-up
@@ -5669,6 +6484,32 @@ if ("serviceWorker" in navigator && window.isSecureContext) {
     });
   });
 }
+// Read-only hooks for this app's own test harness (same pattern as
+// window.__mandalaCellsForTest above) — exposes the constants/pure
+// functions added for the 16-zone knowledge base and the Walls
+// (turtle-graphics boundary) Brahmasthan input mode, none of which
+// would otherwise be reachable from outside this script's own
+// top-level const/let scope.
+window.__testHooks = {
+  MATRIX_RULES: (typeof MATRIX_RULES !== "undefined") ? MATRIX_RULES : null,
+  HOME_ELEMENTS: (typeof HOME_ELEMENTS !== "undefined") ? HOME_ELEMENTS : null,
+  VASTU_16_ZONE_KB: (typeof VASTU_16_ZONE_KB !== "undefined") ? VASTU_16_ZONE_KB : null,
+  PANCHA_TATTVA_MATRIX: (typeof PANCHA_TATTVA_MATRIX !== "undefined") ? PANCHA_TATTVA_MATRIX : null,
+  PANCHA_TATTVA_BY_DIR8: (typeof PANCHA_TATTVA_BY_DIR8 !== "undefined") ? PANCHA_TATTVA_BY_DIR8 : null,
+  KITCHEN_BURNER_BUFFER_SLAB: (typeof KITCHEN_BURNER_BUFFER_SLAB !== "undefined") ? KITCHEN_BURNER_BUFFER_SLAB : null,
+  verticesFromWalls: (typeof verticesFromWalls !== "undefined") ? verticesFromWalls : null,
+  wallClosureGapMeters: (typeof wallClosureGapMeters !== "undefined") ? wallClosureGapMeters : null,
+  polygonCentroid: (typeof polygonCentroid !== "undefined") ? polygonCentroid : null,
+  isConvex: (typeof isConvex !== "undefined") ? isConvex : null,
+  evaluateMatrix: (typeof evaluateMatrix !== "undefined") ? evaluateMatrix : null,
+  mapRoomLabelToType: (typeof mapRoomLabelToType !== "undefined") ? mapRoomLabelToType : null,
+  detectFloorPlanFootprint: (typeof detectFloorPlanFootprint !== "undefined") ? detectFloorPlanFootprint : null,
+  detectInkBoundingBox: (typeof detectInkBoundingBox !== "undefined") ? detectInkBoundingBox : null,
+  detectFloorPlanBrahmasthan: (typeof detectFloorPlanBrahmasthan !== "undefined") ? detectFloorPlanBrahmasthan : null,
+  getPlanCentroidPx: (typeof getPlanCentroidPx !== "undefined") ? getPlanCentroidPx : null,
+  rederiveOcrBearings: (typeof rederiveOcrBearings !== "undefined") ? rederiveOcrBearings : null,
+  roomBearingFromCentroid: (typeof roomBearingFromCentroid !== "undefined") ? roomBearingFromCentroid : null
+};
 </script>
 
 </body>
