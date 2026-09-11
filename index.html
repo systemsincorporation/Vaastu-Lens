@@ -116,13 +116,13 @@
   }
 
   /* Dial — transparent, floating directly on the app background, no opaque card behind it */
-  #dial-wrap { position: relative; display: flex; justify-content: center; align-items: center; margin: 14px 0 8px; height: 300px; }
+  #dial-wrap { position: relative; display: flex; justify-content: center; align-items: center; margin: 14px 0 8px; height: 356px; }
   #dialGlow {
-    position: absolute; width: 260px; height: 260px; border-radius: 50%;
+    position: absolute; width: 320px; height: 320px; border-radius: 50%;
     background: radial-gradient(circle, rgba(125,196,255,0.20) 0%, rgba(179,136,255,0.08) 55%, transparent 75%);
     filter: blur(6px); pointer-events: none;
   }
-  #dialCanvas { position: relative; touch-action: none; }
+  #dialCanvas { position: relative; touch-action: none; max-width: 100%; height: auto; }
   #dialNameStrip {
     display: flex; justify-content: center; align-items: baseline; gap: 14px;
     margin: 4px 0 10px; font-size: 12px; color: var(--text-dim); flex-wrap: nowrap;
@@ -174,6 +174,14 @@
     box-shadow: 0 2px 10px rgba(0,0,0,0.15);
   }
   .lens-chip-accent { background: var(--accent); color: #fff; }
+  .voice-live {
+    background: #c62828 !important; color: #fff !important; border-color: #c62828 !important;
+    animation: voicePulse 1.6s ease-in-out infinite;
+  }
+  @keyframes voicePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(198,40,40,0.5); }
+    50% { box-shadow: 0 0 0 6px rgba(198,40,40,0); }
+  }
   #tagPanel {
     position: absolute; top: 56px; left: 10px; right: 10px; z-index: 6;
     background: rgba(255,255,255,0.92); backdrop-filter: blur(10px); border-radius: 14px;
@@ -358,7 +366,7 @@
 
       <div id="dial-wrap">
         <video id="dialVideo" autoplay playsinline muted style="display:none; position:absolute; inset:0; width:100%; height:100%; object-fit:cover; border-radius:20px;"></video>
-        <div id="dialGlow"></div><canvas id="dialCanvas" width="280" height="280"></canvas>
+        <div id="dialGlow"></div><canvas id="dialCanvas" width="340" height="340"></canvas>
       </div>
 
       <div id="dialNameStrip"></div>
@@ -1571,6 +1579,16 @@ document.querySelectorAll("header nav button").forEach(btn => {
     document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
     document.getElementById(btn.dataset.tab + "Screen").classList.add("active");
     syncCamera();
+    // Voice commands only have a visible on/off control on the Dial and
+    // Lens tabs — leaving the microphone listening in the background
+    // while the person has navigated to an unrelated tab (with no
+    // indication it's still on, and no button in sight to stop it) is
+    // exactly the "it won't stop" complaint this fixes. Stopping it
+    // outright (not just pausing) means returning to Dial/Lens always
+    // shows the honest "Off" state, never a silently-still-listening mic.
+    if (btn.dataset.tab !== "dial" && btn.dataset.tab !== "lens" && typeof voiceEnabled !== "undefined" && voiceEnabled) {
+      toggleVoiceCommands();
+    }
     if (btn.dataset.tab === "matrix" && typeof renderMatrixSavedHome === "function") renderMatrixSavedHome();
     if (btn.dataset.tab === "brahmasthan" && typeof renderSavedHomeCard === "function") renderSavedHomeCard();
   });
@@ -1739,11 +1757,29 @@ function roseLabelScreenAngle(originalCompassAngle, heading){
   return normalize(originalCompassAngle - heading);
 }
 
+/**
+ * The main compass dial — redesigned as a set of concentric rings (per
+ * the user's own reference photos of a commercial Vastu compass):
+ * from the outside in, a degree-tick ring, a 16-point compass-name
+ * ring, the 32-point Vastu Purusha pada ring (VASTU_MANDALA_32, color-
+ * coded by cardinal side), and — at the very centre — the innermost
+ * mandala ring (Aryaman/Vivasvan/Mitra/Bhudhar around Brahma) plus the
+ * live sector highlight and heading ticks that were the entire dial
+ * before this change. Everything inside the outer save/rotate block
+ * turns together as one card as you turn the phone, exactly as
+ * before — only the fixed pointer at the very top stays unrotated.
+ */
 function drawDial(heading, count, highlightedIndex, risk){
   const w = dialCanvas.width, h = dialCanvas.height;
   dctx.clearRect(0,0,w,h); // transparent — no opaque fill, the app's glassy background shows through
-  const cx = w/2, cy = h/2, radius = Math.min(w,h)/2 * 0.82;
+  const cx = w/2, cy = h/2, R = Math.min(w,h)/2 * 0.98;
   const sectorWidth = 360/count;
+
+  // Ring boundaries, outer to inner (see function comment above).
+  const degTickOut = R, degTickIn = R * 0.92;
+  const name16Out = R * 0.90, name16In = R * 0.70;
+  const padaOut = R * 0.68, padaIn = R * 0.44;
+  const coreR = R * 0.40; // the old dial's full radius, now the innermost ring
 
   // A real compass works like this: the card (N/E/S/W, tick marks)
   // stays oriented to true/magnetic north in the real world, so as
@@ -1761,20 +1797,94 @@ function drawDial(heading, count, highlightedIndex, risk){
   dctx.rotate(roseRotation * Math.PI / 180);
   dctx.translate(-cx, -cy);
 
+  function polar(radius, deg){
+    const rad = (deg - 90) * Math.PI / 180;
+    return [cx + radius * Math.cos(rad), cy + radius * Math.sin(rad)];
+  }
+  function radialLabel(radius, deg, text, font, color){
+    const [x, y] = polar(radius, deg);
+    dctx.save();
+    dctx.translate(x, y);
+    // Keep text upright relative to the (still-rotating) card rather
+    // than spinning with it — legible at any heading, same idea as
+    // the N/S/E/W labels the old dial already kept upright.
+    dctx.rotate(-roseRotation * Math.PI / 180);
+    dctx.font = font;
+    dctx.fillStyle = color;
+    dctx.textAlign = "center";
+    dctx.textBaseline = "middle";
+    dctx.fillText(text, 0, 0);
+    dctx.restore();
+  }
+
+  // --- Ring 1 (outermost): degree ticks, numbered every 30° ---
+  for (let d = 0; d < 360; d += 10) {
+    const major = d % 30 === 0;
+    const [x1, y1] = polar(degTickIn, d);
+    const [x2, y2] = polar(degTickOut, d);
+    dctx.beginPath();
+    dctx.moveTo(x1, y1);
+    dctx.lineTo(x2, y2);
+    dctx.strokeStyle = "rgba(26,26,46,0.4)";
+    dctx.lineWidth = major ? 1.3 : 0.6;
+    dctx.stroke();
+    if (major) radialLabel(degTickOut + 8, d, String(d), "8px sans-serif", "rgba(26,26,46,0.75)");
+  }
+
+  // --- Ring 2: 16-point compass names ---
+  const name16Width = 360 / 16;
+  for (let i = 0; i < 16; i++) {
+    const deg = i * name16Width;
+    dctx.beginPath();
+    dctx.arc(cx, cy, name16Out, (deg - name16Width/2 - 90) * Math.PI/180, (deg + name16Width/2 - 90) * Math.PI/180);
+    dctx.arc(cx, cy, name16In, (deg + name16Width/2 - 90) * Math.PI/180, (deg - name16Width/2 - 90) * Math.PI/180, true);
+    dctx.closePath();
+    dctx.fillStyle = i % 4 === 0 ? "rgba(47,127,209,0.10)" : "rgba(26,26,46,0.03)";
+    dctx.fill();
+    dctx.strokeStyle = "rgba(26,26,46,0.18)";
+    dctx.lineWidth = 0.6;
+    dctx.stroke();
+    radialLabel((name16Out+name16In)/2, deg, NAMES_16[i], i % 4 === 0 ? "bold 8.5px sans-serif" : "7.5px sans-serif", "#1a1a2e");
+  }
+
+  // --- Ring 3: the 32 Vastu Purusha pada names, color-coded by side ---
+  const sideFill = { N: "rgba(125,196,255,0.35)", E: "rgba(120,200,140,0.35)", S: "rgba(230,120,120,0.35)", W: "rgba(230,200,90,0.35)" };
+  for (let i = 0; i < 32; i++) {
+    const deg = i * sectorWidth_32();
+    const entry = VASTU_MANDALA_32[i];
+    const halfW = sectorWidth_32() / 2;
+    dctx.beginPath();
+    dctx.arc(cx, cy, padaOut, (deg - halfW - 90) * Math.PI/180, (deg + halfW - 90) * Math.PI/180);
+    dctx.arc(cx, cy, padaIn, (deg + halfW - 90) * Math.PI/180, (deg - halfW - 90) * Math.PI/180, true);
+    dctx.closePath();
+    dctx.fillStyle = sideFill[entry.side];
+    dctx.fill();
+    dctx.strokeStyle = "rgba(26,26,46,0.15)";
+    dctx.lineWidth = 0.5;
+    dctx.stroke();
+    const label = entry.name.length > 5 ? entry.name.slice(0, 4) + "." : entry.name;
+    radialLabel((padaOut+padaIn)/2, deg, label, "7px sans-serif", "#1a1a2e");
+  }
+
+  // --- Innermost: the old dial (current-sector highlight, heading
+  //     ticks for whatever sectorCount is active, N/S/E/W) — same
+  //     logic and radius proportion as before this redesign, just
+  //     scaled to fit inside the new outer rings instead of filling
+  //     the whole canvas.
   const start = (highlightedIndex*sectorWidth - sectorWidth/2 - 90) * Math.PI/180;
   const end = start + sectorWidth * Math.PI/180;
   dctx.beginPath();
   dctx.moveTo(cx,cy);
-  dctx.arc(cx,cy,radius,start,end);
+  dctx.arc(cx,cy,coreR,start,end);
   dctx.closePath();
-  const grad = dctx.createRadialGradient(cx,cy,radius*0.2,cx,cy,radius);
+  const grad = dctx.createRadialGradient(cx,cy,coreR*0.2,cx,cy,coreR);
   grad.addColorStop(0, "rgba(179,136,255,0.30)");
   grad.addColorStop(1, "rgba(125,196,255,0.35)");
   dctx.fillStyle = grad;
   dctx.fill();
 
   dctx.beginPath();
-  dctx.arc(cx,cy,radius,0,2*Math.PI);
+  dctx.arc(cx,cy,coreR,0,2*Math.PI);
   dctx.strokeStyle = "rgba(26,26,46,0.35)";
   dctx.lineWidth = 1.5;
   dctx.stroke();
@@ -1783,28 +1893,41 @@ function drawDial(heading, count, highlightedIndex, risk){
     const boundaryAngle = i*sectorWidth - sectorWidth/2;
     const isEdge = risk && (i===highlightedIndex || i===(highlightedIndex+1)%count);
     const rad = (boundaryAngle-90)*Math.PI/180;
-    const innerR = radius*0.88;
+    const innerR = coreR*0.86;
     dctx.beginPath();
     dctx.moveTo(cx+innerR*Math.cos(rad), cy+innerR*Math.sin(rad));
-    dctx.lineTo(cx+radius*Math.cos(rad), cy+radius*Math.sin(rad));
+    dctx.lineTo(cx+coreR*Math.cos(rad), cy+coreR*Math.sin(rad));
     dctx.strokeStyle = isEdge ? "#e02f2f" : "rgba(26,26,46,0.35)";
     dctx.lineWidth = isEdge ? 3 : 1;
     dctx.stroke();
   }
+
+  // Innermost mandala core — Brahma's cross with the four cardinal
+  // ring-deities named around it (Brihat Samhita 53.46-48; "Bhudhar"
+  // is the same deity Sastri's translation calls "Prithvidhara" —
+  // both are epithets for "earth-bearer," and "Bhudhar" is the name
+  // the physical compass this was modeled on actually prints, so it's
+  // used here for direct recognition).
+  const crossR = coreR * 0.30;
+  dctx.strokeStyle = "#1a1a2e";
+  dctx.lineWidth = 2;
+  dctx.beginPath(); dctx.moveTo(cx - crossR, cy); dctx.lineTo(cx + crossR, cy); dctx.stroke();
+  dctx.beginPath(); dctx.moveTo(cx, cy - crossR); dctx.lineTo(cx, cy + crossR); dctx.stroke();
+  radialLabel(coreR * 0.14, 0, "Brahma", "bold 7px sans-serif", "#1a1a2e");
+  radialLabel(coreR * 0.62, 0, "Bhudhar", "6.5px sans-serif", "#1a1a2e");
+  radialLabel(coreR * 0.62, 90, "Aryama", "6.5px sans-serif", "#1a1a2e");
+  radialLabel(coreR * 0.62, 180, "Vivaswan", "6.5px sans-serif", "#1a1a2e");
+  radialLabel(coreR * 0.62, 270, "Mitra", "6.5px sans-serif", "#1a1a2e");
 
   // N/E/S/W are drawn here, INSIDE the rotated context — this is the
   // actual fix: they rotate with the card instead of staying pinned to
   // the top of the screen. N is marked in red, the standard convention
   // on a real compass rose, so it's still instantly recognizable once
   // it's no longer always at the same spot.
-  dctx.font = "600 13px sans-serif";
-  dctx.textAlign = "center";
-  dctx.fillStyle = "#c62828";
-  dctx.fillText("N", cx, cy-radius-8);
-  dctx.fillStyle = "#1a1a2e";
-  dctx.fillText("S", cx, cy+radius+16);
-  dctx.fillText("E", cx+radius+12, cy+4);
-  dctx.fillText("W", cx-radius-12, cy+4);
+  radialLabel(coreR + 10, 0, "N", "700 12px sans-serif", "#c62828");
+  radialLabel(coreR + 10, 180, "S", "700 12px sans-serif", "#1a1a2e");
+  radialLabel(coreR + 10, 90, "E", "700 12px sans-serif", "#1a1a2e");
+  radialLabel(coreR + 10, 270, "W", "700 12px sans-serif", "#1a1a2e");
 
   dctx.restore(); // back to the unrotated screen frame for the fixed pointer
 
@@ -1812,9 +1935,9 @@ function drawDial(heading, count, highlightedIndex, risk){
   // direction you're currently facing is always "up" on the screen,
   // by definition. This pointer marks that, and never rotates.
   dctx.beginPath();
-  dctx.moveTo(cx, cy - radius - 4);
-  dctx.lineTo(cx - 9, cy - radius + 16);
-  dctx.lineTo(cx + 9, cy - radius + 16);
+  dctx.moveTo(cx, cy - R - 4);
+  dctx.lineTo(cx - 9, cy - R + 16);
+  dctx.lineTo(cx + 9, cy - R + 16);
   dctx.closePath();
   dctx.fillStyle = "#2f7fd1";
   dctx.shadowColor = "rgba(47,127,209,0.5)";
@@ -1826,6 +1949,7 @@ function drawDial(heading, count, highlightedIndex, risk){
   dctx.fillStyle = "#2f7fd1";
   dctx.fill();
 }
+function sectorWidth_32(){ return 360/32; }
 
 /* ==================================================================
    Main render loop — a single requestAnimationFrame loop reads the
@@ -5317,20 +5441,23 @@ function stopVoiceCommands(){
   speakAndShowVoiceStatus("Voice commands off.");
 }
 
-function toggleVoiceCommands(){
-  voiceEnabled = !voiceEnabled;
+function updateVoiceButtonUI(){
   ["voiceToggleBtn", "dialVoiceToggleBtn"].forEach(id => {
     const btn = document.getElementById(id);
-    if (btn) btn.textContent = "Voice commands: " + (voiceEnabled ? "On" : "Off");
+    if (!btn) return;
+    btn.textContent = voiceEnabled ? "🔴 Voice commands: On (tap to stop)" : "Voice commands: Off";
+    btn.classList.toggle("voice-live", voiceEnabled);
   });
+}
+
+function toggleVoiceCommands(){
+  voiceEnabled = !voiceEnabled;
+  updateVoiceButtonUI();
   if (voiceEnabled) {
     const ok = startVoiceCommands();
     if (!ok) {
       voiceEnabled = false;
-      ["voiceToggleBtn", "dialVoiceToggleBtn"].forEach(id => {
-        const btn = document.getElementById(id);
-        if (btn) btn.textContent = "Voice commands: Off";
-      });
+      updateVoiceButtonUI();
     }
   } else {
     stopVoiceCommands();

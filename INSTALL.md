@@ -1,6 +1,58 @@
 # VastuLens — Install On Your Phone, or Deploy to GitHub Pages
 
-## Latest round — real Vastu Purusha Mandala research, wired everywhere
+## Latest round — voice commands now actually stop
+Root cause: the only on/off control for voice commands lived on the
+Dial and Lens tabs — so switching to Design, Matrix, or Guide left the
+microphone listening in the background with no visible indication it
+was still on and no button anywhere in sight to turn it off. Fixed
+two ways:
+- **Voice commands now stop automatically** the moment you navigate
+  to any tab other than Dial or Lens — not paused-and-resumed, fully
+  stopped, so coming back to Dial/Lens always shows an honest "Off"
+  rather than a silently-still-listening mic.
+- **The on-state is now unmistakable**: the toggle button turns red
+  and gently pulses, with its label reading "🔴 Voice commands: On
+  (tap to stop)" instead of a plain "On" that was easy to miss.
+Verified with a real test (not just "does it crash"): forcing voice
+commands into their "on" state and then simulating a tap to the
+Matrix tab confirms the button reverts to "Off" — the actual behavior
+being fixed, checked directly.
+
+## Latest round — the main compass dial redesigned to match your photos
+The Dial tab's actual compass face (not just the readout text below it)
+is now a set of concentric rings, closest first to what's in your
+reference photos:
+- **Outer ring**: degree tick marks, numbered every 30°.
+- **16-point compass names** (N, NNE, NE, ENE...).
+- **The 32-point Vastu Purusha pada ring** (VASTU_MANDALA_32 — the
+  same researched, source-cited data added last round), color-coded
+  by cardinal side.
+- **Innermost**: Brahma's cross at the centre with Aryama/Vivaswan/
+  Mitra/Bhudhar named around it, plus the live current-sector
+  highlight and heading ticks — this inner ring is exactly the old
+  dial's entire display, just resized to sit inside the new outer
+  rings rather than filling the whole canvas, so nothing about its
+  tested behavior changed, only where it's drawn.
+The whole card turns together as you turn the phone, exactly as
+before — only the fixed pointer at the very top stays unrotated. The
+canvas grew from 280px to 340px (with responsive CSS scaling on
+narrower phones) to fit this much text without it turning to mush;
+32-pada labels are abbreviated to 4 letters where the full name won't
+fit at a legible size, with the full name always available in the
+readout text directly below the dial and via the Center tab's
+full-size tappable version.
+
+**Caught by the test suite, again:** two things this time. First, the
+new dial code initially crashed the moment `drawDial` was called
+directly (a gap in the *test harness's* canvas stub, not the app —
+`createRadialGradient` had never been stubbed because no earlier test
+called `drawDial` directly; fixed the stub, not the app). Second, an
+intermittent single test failure that didn't reproduce on a second or
+third run — logged as a flake rather than quietly ignored, and
+confirmed stable at 108/108 across three consecutive runs before
+shipping.
+
+## Previous round — real Vastu Purusha Mandala research, wired everywhere
 You asked for the Dial to be as informative as your physical compass
 product, backed by real research from your three uploaded manuscripts.
 Here's exactly what was and wasn't possible, stated plainly:
