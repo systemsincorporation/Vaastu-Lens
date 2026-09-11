@@ -1,6 +1,106 @@
 # VastuLens — Install On Your Phone, or Deploy to GitHub Pages
 
-## Latest round — fully fused AR overlay + AI detection overhaul
+## Latest round — real Vastu Purusha Mandala research, wired everywhere
+You asked for the Dial to be as informative as your physical compass
+product, backed by real research from your three uploaded manuscripts.
+Here's exactly what was and wasn't possible, stated plainly:
+
+**What got checked, and how:**
+- **Brihat Samhita** (P.S. Sastri's 1946 translation) — this PDF has a
+  genuine OCR text layer, so it could be searched directly. Found
+  Adhyaya 53 ("Vastuvidya"), which gives the full 45-deity enumeration
+  (13 inner + 32 outer), the quadrant groupings, and which part of the
+  House-God's own body each pada corresponds to.
+- **Vishwakarma Vidya Prakash** — restates the same 45 deities, same
+  order, same groupings, in places almost verbatim. Used as a direct
+  cross-check on the Brihat Samhita reading.
+- **Samarangana Sutradhara** — this PDF is a pure page-scan with no
+  text layer at all (confirmed via `pdffonts`), so it couldn't be
+  searched or quoted. Its published synopsis of contents was checked
+  visually instead: Ch. 11 covers the 64/81/100-pada site plans and
+  Ch. 14 is specifically about assigning deities to the House-God's
+  limbs — independent confirmation of the same tradition, honestly
+  labeled as "checked for context," not "extracted."
+
+**What got built from that research:**
+- **Dial tab**: shows the Vastu Purusha pada name (e.g. "Sikhi, E
+  side") plus its body-limb correspondence whenever the compass is set
+  to 32 points.
+- **Center tab**: a new, tappable **81-pada Vastu Purusha Mandala
+  diagram** — Brahma at the centre, the 8 immediately surrounding
+  deities, and the 32 outer names, drawn as equal segments and aligned
+  precisely onto this app's own existing N1-8/E1-8/S1-8/W1-8 compass
+  convention (which already matched your physical compass photos).
+  Tap any segment for its deity and limb correspondence.
+- **Matrix tab**: the live heading readout now always shows the
+  current Vastu Purusha pada alongside the 8-direction reading.
+- **Design tab**: every tagged room (OCR, manual, compass, or voice)
+  now shows which pada it falls under.
+- **Lens AR overlay**: the live compass tick labels show pada names
+  too, when in 32-point mode.
+- **Guide tab**: a full sources card, naming exactly which manuscript
+  supports which claim, and stating the one genuine interpretive
+  choice honestly — the 81-square mandala is a *square* diagram;
+  drawing it as 32 equal wedges around a circular compass (same as
+  the paper compass this was modeled on) is a reasonable alignment,
+  not a claim that the two geometries are mathematically identical.
+  This stays a clearly separate, complementary layer from the existing
+  8-direction deity/planet table (Kubera/Ishaan/Indra/Agni) used by
+  the Matrix tab's checker — the two are never merged into one
+  confusing table.
+
+**Caught by the test suite before it shipped:** the initial diagram
+code crashed on load — it referenced the mandala data before that
+data had finished initializing (a classic "temporal dead zone" bug),
+which would have silently broken the whole page. Also caught: two
+compass-orientation mistakes in the diagram's own geometry (south and
+west sides were initially swapped/reversed). All fixed, and the app's
+test suite (now 104 checks) verifies the actual drawn geometry — not
+just that the code runs, but that the true-north cell, the NE corner
+cell, and all 32 names land where they're supposed to.
+
+## Previous round — AI detections now stick, plus voice commands
+**The real bug behind "AI detection isn't sticking":** there was no
+path at all from a live AI detection into permanent storage. The
+detection banner was always a transient read — it recomputed every
+~1.5s and quietly reset after 12s of losing sight of the object.
+Nothing about it was ever being saved anywhere, so of course it never
+"stuck" — there was no save step to begin with. Fixed:
+- A **"Save this detection"** button now appears whenever AI confirms a
+  room, writing straight into the same permanent store (`profile.
+  areaDirections`) that Dial/Matrix/manual-tag all already share.
+  Once saved, it stays saved regardless of what the camera sees
+  afterward — nothing auto-overwrites a save; only an explicit new
+  save or a voice command changes it.
+
+**Voice commands**, using the standard Web Speech API already built
+into Chrome on Android (no external service, nothing new to load):
+- A **Voice commands** toggle on both the Lens and Dial tabs.
+- **"Save kitchen" / "save toilet" / "tag entrance"** — saves that room
+  at whatever direction the phone is facing right now.
+- **"Confirm" / "yes" / "that's right"** with no room named — locks in
+  whatever the AI overlay currently shows (the exact "it changed away
+  from sink, tell it to stick" case), at your current heading.
+- **"Remove toilet" / "clear kitchen"** — removes a saved tag by voice.
+- Works in Dutch too for the room name itself ("bewaar de keuken",
+  "verwijder de badkamer") — it reuses the exact same English+Dutch
+  room-name matching the OCR pipeline already uses, one vocabulary for
+  the whole app. Command verbs (save/remove/confirm) also now
+  recognize a few common Dutch equivalents (opslaan, bewaar, verwijder,
+  klopt, ja).
+- Spoken confirmation talks back ("Saved kitchen facing east.") via
+  speech synthesis, with the same text also shown on screen for silent
+  environments or unsupported browsers.
+
+**The saved-spaces map now shows ideal directions, not just current
+status** — every space you've tagged (Design tab, Dial/Matrix "stand
+and point", Lens AI+voice — all of it, unified, since they all write
+to the same store) that isn't already in an ideal spot now shows which
+of the 8 directions actually would be ideal for that room type, pulled
+from the exact same rule table the verdict itself comes from — so it
+can never disagree with the verdict shown right next to it.
+
+## Previous round — fully fused AR overlay + AI detection overhaul
 Two things, both on the Lens tab:
 
 **AI object detection was silently starving, not "broken."** The old

@@ -301,6 +301,7 @@
           <div class="heading-num" id="headingNum">0°</div>
           <div class="sector-name" id="sectorName">N</div>
           <div class="sector-vedic" id="sectorVedic">Uttar</div>
+          <div class="center-text small" id="vastuPadaLine" style="margin-top:2px; color:var(--text-dim); display:none;"></div>
           <div class="center-text small" id="refLine">Reference: true north</div>
           <div class="center-text small" id="fallbackLine" style="display:none; color:#ff8a8a;">
             True north unavailable — showing magnetic north until a location fix arrives.
@@ -312,6 +313,8 @@
           <select id="dialSaveDirectionSelect" class="full" style="margin-top:10px;"></select>
           <button id="dialSaveDirectionBtn" class="ghost">Save this direction</button>
           <p class="small" id="dialSaveDirectionStatus" style="text-align:center; margin-top:4px;"></p>
+          <button id="dialVoiceToggleBtn" class="ghost" style="margin-top:6px;">Voice commands: Off</button>
+          <p class="small" id="dialVoiceStatusText" style="text-align:center; margin-top:4px;"></p>
         </div>
       </div>
 
@@ -409,15 +412,18 @@
       <div id="lensTopBar">
         <button id="aiToggleBtn" class="lens-chip">AI room detect: Off</button>
         <button id="tagPanelToggleBtn" class="lens-chip">Tag this spot</button>
+        <button id="voiceToggleBtn" class="lens-chip">Voice commands: Off</button>
       </div>
 
       <div id="tagPanel" style="display:none;">
         <select id="manualRoomSelect"></select>
         <button id="tagRoomBtn" class="lens-chip lens-chip-accent">Save tag</button>
+        <p class="small" id="voiceStatusText" style="margin:6px 0 0;"></p>
         <div id="taggedRoomsList"></div>
       </div>
 
       <div id="detectionBanner" style="display:none;"></div>
+      <button id="aiSaveDetectionBtn" class="lens-chip lens-chip-accent" style="display:none;">Save this detection</button>
 
       <div id="lensInfo">
         <div class="heading" id="lensHeadingText">0° · N</div>
@@ -442,6 +448,21 @@
         <p>Pick how you want to describe your plot's boundary. The
         centroid is exact math for the shape you give it — the only
         source of error is how closely that shape matches the real plot.</p>
+      </div>
+
+      <div class="card">
+        <h2>Vastu Purusha Mandala (81-pada)</h2>
+        <p>The classical square diagram this whole app's directional
+        logic descends from: Brahma at the centre with 8 more deities
+        immediately around him, and the same 32 outer names the Dial
+        tab shows per-degree when its compass is set to 32 points —
+        drawn here as equal segments for legibility (the source texts
+        give some of them one square and others two or three; see the
+        note below). This is the diagram your plot's Brahmasthan
+        (calculated below) is the centre <em>of</em>.</p>
+        <canvas id="mandalaCanvas" width="600" height="600" style="width:100%; max-width:520px; display:block; margin:10px auto; touch-action:none;"></canvas>
+        <p class="small" id="mandalaTapInfo">Tap a segment to see which deity governs it and, per Brihat Samhita 53.51-54, which part of the House-God's own body it corresponds to.</p>
+        <p class="small" style="margin-top:8px; color:var(--text-dim);">Sources: Varahamihira's <em>Brihat Samhita</em>, Adhyaya 53 (tr. P.S. Sastri, 1946) — the primary enumeration, quadrant groupings, and limb-correspondences used here; cross-checked against the Hindi <em>Vishwakarma Vidya Prakash</em>, which restates the same 45 deities in the same order and grouping almost verbatim. King Bhoja's <em>Samarangana Sutradhara</em> (Ch. 11 &amp; 14) independently confirms the same 64/81/100-pada tradition and devotes a chapter specifically to assigning these deities to the House-God's limbs, though its own scanned pages have no text layer to quote directly, so it was checked visually for context rather than searched. Four minor inner deities the texts also name (Savita, an inner Indra, Rajayakshma, Apavatsa, each on a single small square beside the four shown here) are omitted from this simplified drawing rather than placed on a cell this app can't verify with confidence — see the Guide tab. This is a different, complementary layer to the 8-direction deity/planet table on the Matrix tab, not a replacement for it.</p>
       </div>
 
       <div class="card">
@@ -812,6 +833,49 @@
       </div>
 
       <div class="card">
+        <h2>Sources for the Vastu Purusha Mandala content</h2>
+        <p>The Dial tab's 32-point deity names, the Center tab's
+        81-pada diagram, and the "which body part of the House-God"
+        notes throughout the app come from three manuscripts, each
+        checked directly rather than taken on faith:</p>
+        <ul style="padding-left:18px; margin:6px 0;">
+          <li><strong>Brihat Samhita</strong> by Varahamihira, Adhyaya
+          53 ("Vastuvidya") — P.S. Sastri's 1946 English translation.
+          This is the primary source used: its enumeration of the 45
+          deities, their quadrant groupings, and the limb-correspondences
+          were read directly from the scanned text (this particular
+          PDF has a real OCR text layer, so it could be searched).</li>
+          <li><strong>Vishwakarma Vidya Prakash</strong> (Ravi Datt
+          Shastri) — a Hindi restatement of the same material, used to
+          cross-check: it gives the same 45 deities in the same order
+          and the same quadrant groupings, in places almost verbatim.</li>
+          <li><strong>Samarangana Sutradhara</strong> by King Bhoja
+          (c. 1000-1055 CE) — its published synopsis of contents
+          confirms Ch. 11 covers the 64/81/100-pada site plans and
+          Ch. 14 is specifically about assigning deities to the House-
+          God's limbs across those grids: the same tradition, from a
+          third, independent manuscript. Its page images have no text
+          layer at all (a pure scan), so unlike the other two this one
+          could be checked visually for context but not searched or
+          quoted directly.</li>
+        </ul>
+        <p>Two things worth knowing plainly: this 45-deity mandala is a
+        <strong>different, complementary layer</strong> to the familiar
+        8-direction deity/planet table (Kubera-north, Ishaan-northeast,
+        Indra-east, Agni-southeast, and so on) used by the Matrix tab's
+        room-by-room checker — the two systems are kept visually
+        separate throughout this app rather than merged into one
+        confusing table. And the 81-square diagram is a <em>square</em>
+        grid; drawing it as 32 equal wedges around a compass circle (as
+        this app, and the paper compass it was modeled on, both do) is
+        a reasonable, legible alignment, not a claim that the square
+        and the circle are mathematically identical — the deity names
+        and which cardinal side each belongs to are solid; exact
+        degree boundaries at the four corners are this app's own
+        interpretation.</p>
+      </div>
+
+      <div class="card">
         <h2>What should be improved?</h2>
         <p>This is a personal notes log, saved on your device — it
         does not send anything anywhere, and nothing in this app can
@@ -934,6 +998,18 @@
    Shared Vastu sector math
    ================================================================== */
 const EIGHT_NAMES = ["N","NE","E","SE","S","SW","W","NW"];
+
+/**
+ * Reverse lookup over the same matrix rules everything else already
+ * uses: which of the 8 principal directions are actually IDEAL for a
+ * given room type. Used to show actionable "ideal directions for this
+ * room" guidance next to a saved space, not just its current verdict —
+ * one rule table, read in both directions, so this can never disagree
+ * with the verdict shown elsewhere for the same room type.
+ */
+function idealDirectionsFor(roomTypeKey){
+  return EIGHT_NAMES.filter(d => evaluateMatrix(roomTypeKey, d).status === "IDEAL");
+}
 const VEDIC_EIGHT_NAMES = ["Uttar","Ishanya","Purva","Agneya","Dakshin","Nairutya","Paschim","Vayavya"];
 
 // Standard 16-point compass rose, index i centered at i*22.5 degrees.
@@ -1800,6 +1876,16 @@ function render(){
   document.getElementById("sectorName").textContent =
     sectorName(idx, state.sectorCount) + " (sector " + (idx+1) + " of " + state.sectorCount + ")" + blockLabel;
   document.getElementById("sectorVedic").textContent = sectorVedicName(idx, state.sectorCount);
+  const padaLine = document.getElementById("vastuPadaLine");
+  if (state.sectorCount === 32) {
+    const pada = VASTU_MANDALA_32[idx];
+    padaLine.style.display = "block";
+    padaLine.textContent = "Vastu Purusha pada: " + pada.name +
+      (pada.corner ? " (" + pada.corner + " corner)" : " (" + pada.side + " side)") +
+      (VASTU_LIMB_MAP[pada.name] ? " · " + VASTU_LIMB_MAP[pada.name] + " of the House-God" : "");
+  } else {
+    padaLine.style.display = "none";
+  }
   updateDialNameStrip(idx, state.sectorCount);
   document.getElementById("refLine").textContent =
     "Reference: " + (state.reference === "true" ? "true north" : "magnetic north");
@@ -1813,7 +1899,8 @@ function render(){
   const matrixHeadingEl = document.getElementById("matrixHeadingLine");
   if (matrixHeadingEl) {
     matrixHeadingEl.textContent = "Current reading: " + Math.round(heading) + "° (" +
-      sectorName(sectorIndex(heading, 8), 8) + ")";
+      sectorName(sectorIndex(heading, 8), 8) + ") · Vastu Purusha pada: " +
+      vastuPadaName(sectorIndex(heading, 32));
   }
 
   updateDirectionInsight(heading);
@@ -1999,7 +2086,7 @@ function renderLens(heading, currentIdx, risk){
     // points scroll past here, which is the point: this teaches the
     // full compass rose through use, not just a lookup table elsewhere.
     const span = document.createElement("span");
-    span.textContent = sectorName(i, count);
+    span.textContent = sectorName(i, count) + (count === 32 ? " " + vastuPadaName(i) : "");
     span.style.position = "absolute";
     span.style.left = x + "px";
     span.style.transform = "translateX(-50%)";
@@ -2363,6 +2450,125 @@ function showBrahmaResult(result){
   }
   document.getElementById("brahmaResult").style.display = "block";
 }
+
+/* ==================================================================
+   Vastu Purusha Mandala diagram (Center tab). A square "picture
+   frame" of 32 equal outer segments (8 per side, N/S strips running
+   the full width so the four corners belong to those, E/W strips
+   inset between them) around a 3x3 inner grid — Brahma at the centre
+   with the four cardinal ring-deities and four corner ring-deities
+   around him. Segments are drawn equal-sized for legibility; the
+   source texts assign some of them more physical squares than others
+   (see the card's caption) — this diagram doesn't claim to reproduce
+   that weighting, only the correct deity, correct side, and correct
+   sequence.
+   ================================================================== */
+let mandalaCells = []; // populated on each draw, used for click hit-testing
+
+function drawMandala(){
+  const canvas = document.getElementById("mandalaCanvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  mandalaCells = [];
+
+  const ring = W * 0.167; // outer frame thickness
+  const sideColor = { N: "#cfe3ff", E: "#d7f0d0", S: "#fff2b8", W: "#f6d6e6" };
+  const cornerColor = "#e4e0f5";
+
+  function paintCell(x, y, w, h, label, fill, meta){
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = "rgba(26,26,46,0.35)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = "#1a1a2e";
+    ctx.font = (Math.min(w, h) < 50 ? "9px" : "11px") + " sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    // Wrap long names onto two lines if needed
+    const words = label.split(" ");
+    if (words.length > 1 && w < 90) {
+      ctx.fillText(words[0], x + w/2, y + h/2 - 6);
+      ctx.fillText(words.slice(1).join(" "), x + w/2, y + h/2 + 6);
+    } else {
+      ctx.fillText(label, x + w/2, y + h/2);
+    }
+    mandalaCells.push({ x, y, w, h, label, meta });
+  }
+
+  // Outer 32-segment frame
+  const segW = W / 8;
+  for (let i = 0; i < 8; i++) {
+    const entry = VASTU_MANDALA_32[28 + i > 31 ? (28 + i) - 32 : 28 + i]; // N1..N8 = indices 28..31,0..3
+    paintCell(i * segW, 0, segW, ring, entry.name, sideColor.N, { side: "N", padaIndex: (28 + i) % 32 });
+  }
+  for (let i = 0; i < 8; i++) {
+    const entry = VASTU_MANDALA_32[19 - i]; // S8..S1 left-to-right (index19=SW-adjacent to index12=SE-adjacent)
+    paintCell(i * segW, H - ring, segW, ring, entry.name, sideColor.S, { side: "S" });
+  }
+  const vSegH = (H - 2 * ring) / 8;
+  for (let i = 0; i < 8; i++) {
+    const entry = VASTU_MANDALA_32[4 + i]; // E1..E8 = indices 4..11, top(NE)-to-bottom(SE)
+    paintCell(W - ring, ring + i * vSegH, ring, vSegH, entry.name, sideColor.E, { side: "E" });
+  }
+  for (let i = 0; i < 8; i++) {
+    const entry = VASTU_MANDALA_32[27 - i]; // W8..W1 top(NW)-to-bottom(SW)
+    paintCell(0, ring + i * vSegH, ring, vSegH, entry.name, sideColor.W, { side: "W" });
+  }
+
+  // Inner 3x3: Brahma center, 4 cardinal + 4 corner deities
+  const innerX = ring, innerY = ring, innerSize = W - 2 * ring;
+  const cellSize = innerSize / 3;
+  const innerGrid = [
+    ["Rudra", "Prithvidhara", "Apah"],
+    ["Mitra", "Brahma", "Aryaman"],
+    ["Jaya", "Vivasvan", "Savitra"],
+  ];
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const name = innerGrid[r][c];
+      const fill = name === "Brahma" ? "#ffe28a" : (["Prithvidhara","Aryaman","Vivasvan","Mitra"].includes(name) ? "#ffd7a8" : cornerColor);
+      paintCell(innerX + c * cellSize, innerY + r * cellSize, cellSize, cellSize, name, fill, { inner: true });
+    }
+  }
+
+  ctx.fillStyle = "#1a1a2e";
+  ctx.font = "bold 11px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("N ▲", 6, ring / 2);
+
+  // Exposed only so this app's own test suite can verify the real
+  // geometry (which cell got which name) rather than merely that
+  // drawing didn't throw — mirrors nothing sensitive, costs nothing
+  // in production, and would have caught the N/S/E/W orientation
+  // mix-ups this function went through during development.
+  window.__mandalaCellsForTest = mandalaCells;
+}
+// Deferred rather than called immediately: VASTU_MANDALA_32 is declared
+// later in this same script, so calling this synchronously right here
+// would hit it before its `const` initializes (a TDZ crash that used
+// to silently abort the rest of the script's top-level execution —
+// caught by this app's own test suite, not by hand-testing in a
+// browser, which is exactly why the suite exists).
+window.addEventListener("load", () => drawMandala());
+
+document.getElementById("mandalaCanvas").addEventListener("click", (e) => {
+  const canvas = document.getElementById("mandalaCanvas");
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+  const x = (e.clientX - rect.left) * scaleX, y = (e.clientY - rect.top) * scaleY;
+  const hit = mandalaCells.find(c => x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h);
+  const infoEl = document.getElementById("mandalaTapInfo");
+  if (!hit) return;
+  const limb = VASTU_LIMB_MAP[hit.label];
+  let text = hit.label + (hit.meta && hit.meta.side ? " — " + hit.meta.side + " side" : "");
+  if (limb) text += " · corresponds to the " + limb + " of the House-God (Brihat Samhita 53.51-54)";
+  if (hit.label === "Brahma") text = "Brahma — the centre, over the Brahmasthan itself. Keep this space open, light, and free of clutter or heavy structure.";
+  infoEl.textContent = text;
+});
+window.addEventListener("resize", () => drawMandala());
 
 document.getElementById("calcBrahmasthanBtn").addEventListener("click", () => {
   const errEl = document.getElementById("brahmaError");
@@ -3075,9 +3281,12 @@ function renderMatrixSavedHome(){
       const row = document.createElement("div");
       row.className = "room-compliance-row";
       row.style.flexWrap = "wrap";
+      const idealHint = result.status !== "IDEAL" ?
+        (() => { const ideals = idealDirectionsFor(key); return ideals.length ? '<div class="small" style="width:100%;">Ideal direction(s): ' + ideals.join(", ") + '</div>' : ''; })() : '';
       row.innerHTML =
         '<span>' + roomLabel(key) + ' — ' + entry.dir32 + ' (' + Math.round(entry.bearing) + '°)</span>' +
         '<span class="badge ' + badgeCls + '">' + badgeLabel + '</span>' +
+        idealHint +
         ((result.remedies.length || result.structuralOption) ?
           '<div style="width:100%; margin-top:4px;">' + formatRemediesChecklistHtml(result.remedies, entry.remediesStatus, "area:" + key) + formatStructuralOptionHtml(result.structuralOption) + '</div>' : '');
       html += row.outerHTML;
@@ -3094,9 +3303,12 @@ function renderMatrixSavedHome(){
       const row = document.createElement("div");
       row.className = "room-compliance-row";
       row.style.flexWrap = "wrap";
+      const idealHint = result.status !== "IDEAL" ?
+        (() => { const ideals = idealDirectionsFor(r.type); return ideals.length ? '<div class="small" style="width:100%;">Ideal direction(s): ' + ideals.join(", ") + '</div>' : ''; })() : '';
       row.innerHTML =
         '<span>' + roomLabel(r.type) + ' — ' + (r.dir32 || r.dir8) + ' zone (' + Math.round(r.bearing) + '° from Brahmasthan)</span>' +
         '<span class="badge ' + badgeCls + '">' + badgeLabel + '</span>' +
+        idealHint +
         (result.remedies.length ? '<div style="width:100%; margin-top:4px;">' + formatRemediesChecklistHtml(result.remedies, r.remediesStatus, "room:" + i) + formatStructuralOptionHtml(result.structuralOption) + '</div>' : '');
       html += row.outerHTML;
     });
@@ -3197,8 +3409,162 @@ function renderFeedbackStrip(elementKey, result){
 }
 
 /* ==================================================================
+   Vastu Purusha Mandala — the 45-deity grid (13 inner + 32 outer)
+   from Varahamihira's Brihat Samhita, Adhyaya 53 ("Vastuvidya"),
+   cross-checked directly against two other primary sources for this
+   app: P.S. Sastri's 1946 scholarly English translation of the Brihat
+   Samhita (Slokas 42-56 give the full enumeration, the quadrant
+   groupings, and the limb-correspondences used below) and the Hindi
+   Vishwakarma Vidya Prakash (which restates the same 45-deity, same
+   order, same quadrant groupings almost verbatim — "मध्ये ब्रह्मा
+   नवकोष्ठकाधिपः...", "एकाशीतिविभागे दश दश पूर्वोत्तरायता रेखाः..."). A
+   third manuscript, King Bhoja's Samarangana Sutradhara (c. 1000-1055
+   CE), was also consulted — its own synopsis of contents confirms
+   Ch. 11 covers the 64/81/100-pada site plans and Ch. 14 is devoted
+   specifically to assigning deities to the Vastu Purusha's limbs
+   across those grids, the same tradition this data reflects; that
+   manuscript's body text is a pure page-scan with no text layer at
+   all, so unlike the other two sources it could be visually spot-
+   checked for context but not searched or block-quoted.
+
+   Two honest caveats, stated once here rather than buried:
+   (1) The 81-square grid is a SQUARE diagram; mapping its corner
+   regions onto a perfectly circular 32-point compass (as this app,
+   and the commercial paper compass this was modeled on, both do)
+   is an interpretive alignment, not a one-to-one geometric identity.
+   The deity SEQUENCE and which cardinal side each belongs to is
+   textually solid; exact degree boundaries at the four corners are
+   this app's own reasonable approximation, not a verse-cited figure.
+   (2) This mandala is a DIFFERENT, complementary layer to the
+   8-direction deity/planet table above (DIRECTION_PROFILE, the
+   familiar Kubera/Ishaan/Indra/Agni ashtadikpala scheme) — the two
+   are not the same system and are kept visually separate throughout
+   this app rather than merged into one confusing table.
+   ================================================================== */
+const VASTU_SOURCES = {
+  brihatSamhita: "Varahamihira, Brihat Samhita, Adhyaya 53 (tr. P.S. Sastri, 1946)",
+  vishwakarma: "Vishwakarma Vidya Prakash (Ravi Datt Shastri), वास्तुपुरुषोत्पत्तिकथनम् / गृहमध्ये आग्नेय्यादिक्रमेण षोडशगृहविचारः",
+  samarangana: "King Bhoja, Samarangana Sutradhara, c. 1000-1055 CE, Ch. 11 & 14 (context-checked visually; no text layer to quote)"
+};
+
+// The 32 outer-ring deities, in the order Brihat Samhita 53.43-45 gives
+// them, aligned onto this app's own existing 32-point indexing (index
+// 0 = due North, clockwise) — which already implements the same N1-8/
+// E1-8/S1-8/W1-8 convention as the paper Vastu compass this feature
+// was modeled on (see blockLabel32(); N4|N5 straddle true north, E1
+// sits exactly at the NE point, and so on). Sastri's own explicit
+// quadrant grouping (53.53) — "in the east: Jayanta, Indra, Surya,
+// Satya, Bhrisha", "in the south: Vitatha, Brihatkshata, Yama,
+// Gandharva, Bhringaraja", "in the west: Sugriva, Kusumadanta,
+// [Varuna], Asura, Sosha", "in the north: Mukhya, Bhallata, Soma,
+// Bhujaga, Aditi" — fixes the middle 5 of each side without ambiguity;
+// the remaining 12 names are the three-per-corner deities the same
+// passage places at the NE/SE/SW/NW seams (Sikhi+Parjanya+Antariksha
+// at the east corners, Anila+Pushan+Mriga at the south corners, and
+// so on), placed here at the one seam position each side has left —
+// this seam placement is this app's own reasonable alignment, not a
+// verse-cited degree figure (see the caveat above).
+const VASTU_MANDALA_32 = [
+  /* 0  N5  (0° = true N)   */ { name: "Soma",        side: "N" },
+  /* 1  N6                  */ { name: "Bhujaga",     side: "N" },
+  /* 2  N7                  */ { name: "Aditi",       side: "N" },
+  /* 3  N8  (seam w/ E)     */ { name: "Diti",        side: "N", corner: "NE" },
+  /* 4  E1  (45° = NE)      */ { name: "Sikhi",       side: "E", corner: "NE" },
+  /* 5  E2                  */ { name: "Parjanya",    side: "E", corner: "NE" },
+  /* 6  E3                  */ { name: "Jayanta",     side: "E" },
+  /* 7  E4                  */ { name: "Indra",       side: "E" },
+  /* 8  E5                  */ { name: "Surya",       side: "E" },
+  /* 9  E6                  */ { name: "Satya",       side: "E" },
+  /* 10 E7                  */ { name: "Bhrisha",     side: "E" },
+  /* 11 E8  (seam w/ S)     */ { name: "Antariksha",  side: "E", corner: "SE" },
+  /* 12 S1  (135° = SE)     */ { name: "Anila",       side: "S", corner: "SE" },
+  /* 13 S2                  */ { name: "Pushan",      side: "S", corner: "SE" },
+  /* 14 S3                  */ { name: "Vitatha",     side: "S" },
+  /* 15 S4                  */ { name: "Brihatkshata",side: "S" },
+  /* 16 S5                  */ { name: "Yama",        side: "S" },
+  /* 17 S6                  */ { name: "Gandharva",   side: "S" },
+  /* 18 S7                  */ { name: "Bhringaraja", side: "S" },
+  /* 19 S8  (seam w/ W)     */ { name: "Mriga",       side: "S", corner: "SW" },
+  /* 20 W1  (225° = SW)     */ { name: "Pitru",       side: "W", corner: "SW" },
+  /* 21 W2                  */ { name: "Dauvarika",   side: "W", corner: "SW" },
+  /* 22 W3                  */ { name: "Sugriva",     side: "W" },
+  /* 23 W4                  */ { name: "Kusumadanta", side: "W" },
+  /* 24 W5                  */ { name: "Varuna",      side: "W" },
+  /* 25 W6                  */ { name: "Asura",       side: "W" },
+  /* 26 W7                  */ { name: "Sosha",       side: "W" },
+  /* 27 W8  (seam w/ N)     */ { name: "Papayakshma", side: "W", corner: "NW" },
+  /* 28 N1  (315° = NW)     */ { name: "Roga",        side: "N", corner: "NW" },
+  /* 29 N2                  */ { name: "Ahi",         side: "N", corner: "NW" },
+  /* 30 N3                  */ { name: "Mukhya",      side: "N" },
+  /* 31 N4  (seam w/ N5)    */ { name: "Bhallata",    side: "N" },
+];
+
+/**
+ * Returns the outer-ring deity for a given 32-point sector index
+ * (0 = N, clockwise). Only meaningful at 32-sector resolution — the
+ * mandala doesn't subdivide onto an 8- or 16-point compass without
+ * losing individual padas, so callers should only show this at
+ * state.sectorCount === 32.
+ */
+function vastuPadaName(index32){
+  const entry = VASTU_MANDALA_32[((index32 % 32) + 32) % 32];
+  return entry ? entry.name : null;
+}
+
+// The 13 inner deities (Brihat Samhita 53.46-48, 53.53): Brahma at
+// center over 9 squares; four deities over 3 squares each, one toward
+// each cardinal side of Brahma (53's own final, unambiguous summary:
+// "Aryaman, Vivasvan, Mitra and Prithvidhara in the four quarters
+// beginning with the east... preside over three squares each"); four
+// minor 1-square deities beside them; and four 1-square deities at
+// the innermost NE/SE/SW/NW corners.
+const VASTU_MANDALA_INNER = [
+  { name: "Brahma", role: "center", squares: 9 },
+  { name: "Aryaman", role: "cardinal", side: "E", squares: 3 },
+  { name: "Vivasvan", role: "cardinal", side: "S", squares: 3 },
+  { name: "Mitra", role: "cardinal", side: "W", squares: 3 },
+  { name: "Prithvidhara", role: "cardinal", side: "N", squares: 3 },
+  { name: "Savita", role: "minor", side: "E", squares: 1 },
+  { name: "Indra (Vibudhadhipati)", role: "minor", side: "S", squares: 1 },
+  { name: "Rajayakshma", role: "minor", side: "W", squares: 1 },
+  { name: "Apavatsa", role: "minor", side: "N", squares: 1 },
+  { name: "Apah", role: "corner", side: "NE", squares: 1 },
+  { name: "Savitra", role: "corner", side: "SE", squares: 1 },
+  { name: "Jaya", role: "corner", side: "SW", squares: 1 },
+  { name: "Rudra", role: "corner", side: "NW", squares: 1 },
+];
+
+/**
+ * Which part of the Vastu Purusha's own body a pada sits on — Brihat
+ * Samhita 53.51-54, given as a nice-to-know teaching aid alongside the
+ * mandala, not as anything the compliance matrix depends on.
+ */
+const VASTU_LIMB_MAP = {
+  Agni: "head", Apah: "face", Aryaman: "chest", Apavatsa: "chest",
+  Parjanya: "eye (right)", Diti: "eye (left)", Jayanta: "ear (right)",
+  Aditi: "ear (left)", Indra: "shoulder (right)", Soma: "shoulder (left)",
+  Surya: "shoulder", Bhujaga: "chest (left)",
+  Satya: "arm (right)", Bhrisha: "arm (right)", Antariksha: "arm (right)",
+  Anila: "arm (right)", Pushan: "arm (right)",
+  Bhallata: "arm (left)", Mukhya: "arm (left)", Ahi: "arm (left)",
+  Roga: "arm (left)", Papayakshma: "arm (left)",
+  Savita: "hand (right)", Savitra: "hand (right)",
+  Rudra: "hand (left)", Rajayakshma: "hand (left)",
+  Vitatha: "side (right)", Brihatkshata: "side (right)",
+  Sosha: "side (left)", Asura: "side (left)",
+  Vivasvan: "stomach",
+  Yama: "thigh (right)", Varuna: "thigh (left)",
+  Gandharva: "knee (right)", Kusumadanta: "knee (left)",
+  Bhringaraja: "shank (right)", Sugriva: "shank (left)",
+  Mriga: "buttock (right)", Dauvarika: "buttock (left)",
+  Brahman: "heart", Pitru: "foot",
+};
+
+/* ==================================================================
    Direction ↔ Vastu-astrology profile. The deity/planet associations
-   below (Vastu Purusha Mandala directional attributions) recur across
+   below (the familiar Kubera/Ishaan/Indra/Agni ashtadikpala scheme —
+   a different, complementary layer to the Vastu Purusha Mandala data
+   above) recur across
    popular Vastu-astrology literature — same sourcing caveat as the
    compliance matrix above: commonly cited, not verse-cited to one
    text, and different lineages attribute some of these differently
@@ -3625,7 +3991,8 @@ document.getElementById("calibrateNorthBtn").addEventListener("click", () => {
     results.forEach(r => {
       if (typeof r.x !== "number" || typeof r.y !== "number") return; // compass-captured entries have no pixel position to re-derive from
       const pixelBearing = roomBearingFromCentroid({ x: r.x, y: r.y, w: 0, d: 0 }, { x: centerX, y: centerY });
-      r.dir8 = sectorName(sectorIndex(normalize(pixelBearing + heading), 8), 8);
+      r.bearing = normalize(pixelBearing + heading);
+      r.dir8 = sectorName(sectorIndex(r.bearing, 8), 8);
     });
   }
   renderOcrResults();
@@ -3656,7 +4023,7 @@ document.getElementById("standPointSaveBtn").addEventListener("click", () => {
   const results = (ocrResultsByFloor[currentFloorIndex] || []).slice();
   results.forEach(r => { if (r.type === type && !r.superseded) r.superseded = true; });
   results.push({
-    rawText: roomLabel(type) + " (compass reading)", type: type, dir8: dir8,
+    rawText: roomLabel(type) + " (compass reading)", type: type, dir8: dir8, bearing: heading,
     sizeHint: null, source: "compass", superseded: false
   });
   ocrResultsByFloor[currentFloorIndex] = results;
@@ -3819,6 +4186,8 @@ function renderOcrResults(){
         " · ~" + item.sizeHint.valueMeters.toFixed(2) + "m (from \"" + item.sizeHint.sourceText + "\" nearby)") :
       "";
     const sourceTag = item.source === "manual" ? "manually marked" : (item.source === "compass" ? "compass reading" : "auto-detected");
+    const padaText = (typeof item.bearing === "number") ?
+      ' <span class="small">· pada: ' + vastuPadaName(sectorIndex(item.bearing, 32)) + '</span>' : '';
     if (item.superseded) {
       html += '<div class="room-compliance-row" style="flex-wrap:wrap; opacity:0.5;">' +
         '<span style="text-decoration:line-through;">"' + item.rawText + '" → ' + roomLabel(item.type) + ' — ' + item.dir8 + '</span>' +
@@ -3831,7 +4200,7 @@ function renderOcrResults(){
       // the old (which stays visible struck-through, and could read as
       // "I can't get rid of the wrong one").
       html += '<div class="room-compliance-row" style="flex-wrap:wrap;">' +
-        '<span>"' + item.rawText + '" → ' + roomLabel(item.type) + ' — ' + item.dir8 + sizeText + ' <span class="small">(' + sourceTag + ')</span></span>' +
+        '<span>"' + item.rawText + '" → ' + roomLabel(item.type) + ' — ' + item.dir8 + sizeText + padaText + ' <span class="small">(' + sourceTag + ')</span></span>' +
         '<span class="badge ' + badgeCls + '">' + badgeLabel + '</span>' +
         '<button class="ghost" data-remove-tag="' + i + '" style="margin-left:6px; padding:2px 8px; font-size:12px;">Remove</button>' +
         ((result.remedies.length || result.structuralOption) ?
@@ -3975,7 +4344,7 @@ async function runOcrOnCurrentFloorInner(statusEl){
       const sizeHint = findNearestDimension(w, otherWords, sourceCanvas.width * 0.15);
 
       found.push({
-        rawText: w.text.trim(), type: type, dir8: dir8, x: w.x, y: w.y,
+        rawText: w.text.trim(), type: type, dir8: dir8, bearing: bearing, x: w.x, y: w.y,
         sizeHint: sizeHint, source: "ocr", superseded: false
       });
     });
@@ -4090,7 +4459,7 @@ document.getElementById("manualMarkConfirmBtn").addEventListener("click", () => 
   // an explicit before/after rather than just vanishing.
   results.forEach(r => { if (r.type === type && !r.superseded) r.superseded = true; });
   results.push({
-    rawText: roomLabel(type) + " (marked by you)", type: type, dir8: dir8,
+    rawText: roomLabel(type) + " (marked by you)", type: type, dir8: dir8, bearing: bearing,
     x: pendingManualPoint.x, y: pendingManualPoint.y,
     sizeHint: null, source: "manual", superseded: false
   });
@@ -4759,9 +5128,16 @@ function renderTaggedRooms(){
     row.className = "tag-row";
     const r = evaluateMatrix(key, entry.dir8);
     const statusShort = r.status === "IDEAL" ? "Ideal" : (r.status === "FORBIDDEN" ? "Forbidden" : "Remedy");
+    const idealHint = r.status !== "IDEAL" ?
+      (() => {
+        const ideals = idealDirectionsFor(key);
+        return ideals.length ?
+          '<div class="small" style="width:100%;">Ideal direction(s) for ' + roomLabel(key).toLowerCase() + ': ' + ideals.join(", ") + '</div>' :
+          '';
+      })() : '';
     row.innerHTML =
       '<span>' + roomLabel(key) + ' — ' + (entry.dir32 || entry.dir8) + ' (' + statusShort + ')</span>' +
-      '<button data-remove="' + key + '">✕</button>';
+      '<button data-remove="' + key + '">✕</button>' + idealHint;
     listEl.appendChild(row);
   });
   listEl.querySelectorAll("button[data-remove]").forEach(btn => {
@@ -4783,6 +5159,186 @@ document.getElementById("tagRoomBtn").addEventListener("click", () => {
   saveAreaDirection(areaTypeKey, currentHeading());
   renderTaggedRooms();
 });
+
+/* ==================================================================
+   Voice commands — hands-free save/correct for whatever the compass
+   and AI detection currently see. Built on the standard Web Speech
+   API (SpeechRecognition for listening, SpeechSynthesis for spoken
+   confirmation) already built into Chrome on Android; no external
+   model or network call involved. Room-name parsing reuses
+   mapRoomLabelToType — the exact same English+Dutch keyword matching
+   already used for OCR — so "save the kitchen", "save keuken", and a
+   printed "Keuken" label on a floor plan are all understood the same
+   way, one vocabulary for the whole app rather than a second one just
+   for voice.
+
+   This directly fixes the reported problem: previously there was no
+   way at all to lock in an AI detection — it was purely a live,
+   transient read. Saying "save toilet" (or tapping the equivalent
+   button) writes into the same profile.areaDirections store that
+   Dial/Matrix/Lens's manual tag all already share, at the compass
+   heading the phone has *right now* — which is often the actual
+   moment of highest confidence, since the user is looking straight at
+   the feature and saying so, independent of whatever the object
+   detector's own confidence happened to be that frame.
+   ================================================================== */
+let voiceRecognition = null;
+let voiceEnabled = false;
+let voiceRestartTimer = null;
+
+function speechSupported(){
+  return typeof window.SpeechRecognition !== "undefined" || typeof window.webkitSpeechRecognition !== "undefined";
+}
+
+/** Shows feedback in every voice-status element present on the page (Lens + Dial both have one), and speaks it aloud if speech synthesis is available. */
+function speakAndShowVoiceStatus(text){
+  ["voiceStatusText", "dialVoiceStatusText"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  });
+  try {
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel(); // don't queue up and talk over itself on rapid commands
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.rate = 1.05;
+      window.speechSynthesis.speak(utter);
+    }
+  } catch (e) {
+    // Speech synthesis is a nicety, not a requirement — the visual
+    // status text above already carries the same information.
+  }
+}
+
+const VOICE_SAVE_VERBS = /\b(save|tag|mark|set|confirm|correct|yes|that'?s\s*right|this\s*is|it'?s|opslaan|bewaar|markeer|klopt|ja)\b/;
+const VOICE_REMOVE_VERBS = /\b(remove|delete|clear|undo|forget|verwijder|wis)\b/;
+
+/**
+ * Pure parser (no DOM/state access) so it's directly testable: given a
+ * lowercased speech transcript and the room AI currently has confirmed
+ * (or null), returns { action: "save"|"remove", room } or null if the
+ * phrase isn't a recognized command at all.
+ */
+function parseVoiceCommand(transcript, aiConfirmedRoom){
+  const t = (transcript || "").toLowerCase().trim();
+  if (!t) return null;
+  const namedRoom = mapRoomLabelToType(t);
+
+  if (VOICE_REMOVE_VERBS.test(t)) {
+    if (namedRoom) return { action: "remove", room: namedRoom };
+    return null; // "remove" with no room named is too ambiguous to act on
+  }
+  if (VOICE_SAVE_VERBS.test(t)) {
+    if (namedRoom) return { action: "save", room: namedRoom };
+    // A bare "confirm"/"yes"/"correct" with no room named — voice
+    // agreeing with whatever the AI overlay currently shows, exactly
+    // the "sink changed to something else, tell it to stick" case.
+    if (/\b(confirm|yes|correct|that'?s\s*right|klopt|ja)\b/.test(t) && aiConfirmedRoom) {
+      return { action: "save", room: aiConfirmedRoom };
+    }
+    return null;
+  }
+  return null;
+}
+
+function runVoiceCommand(transcript){
+  const aiRoom = (typeof detectionMemory !== "undefined" && detectionMemory.confirmed) ? detectionMemory.confirmed.room : null;
+  const cmd = parseVoiceCommand(transcript, aiRoom);
+  if (!cmd) {
+    speakAndShowVoiceStatus('Heard "' + transcript + '" — not a recognized command. Try "save kitchen" or "remove toilet".');
+    return;
+  }
+  if (cmd.action === "remove") {
+    removeAreaDirection(cmd.room);
+    if (typeof renderTaggedRooms === "function") renderTaggedRooms();
+    speakAndShowVoiceStatus("Removed " + roomLabel(cmd.room) + ".");
+    return;
+  }
+  // action === "save"
+  if (!canAnalyze()) {
+    speakAndShowVoiceStatus("Sensor accuracy is too low right now — recalibrate the compass before saving.");
+    return;
+  }
+  saveAreaDirection(cmd.room, currentHeading());
+  if (typeof renderTaggedRooms === "function") renderTaggedRooms();
+  const dir8 = sectorName(sectorIndex(currentHeading(), 8), 8);
+  speakAndShowVoiceStatus("Saved " + roomLabel(cmd.room) + " facing " + dir8 + ".");
+}
+
+function startVoiceCommands(){
+  if (!speechSupported()) {
+    speakAndShowVoiceStatus("Voice commands aren't supported in this browser. Chrome on Android supports this.");
+    return false;
+  }
+  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+  voiceRecognition = new SpeechRecognitionCtor();
+  voiceRecognition.continuous = true;
+  voiceRecognition.interimResults = false;
+  voiceRecognition.lang = (navigator.language || "en-US");
+
+  voiceRecognition.onresult = (event) => {
+    const last = event.results[event.results.length - 1];
+    if (!last || !last[0]) return;
+    runVoiceCommand(last[0].transcript);
+  };
+  voiceRecognition.onerror = (e) => {
+    // "no-speech" and "aborted" fire constantly during normal silence
+    // between commands — not worth alarming the user over; onend
+    // below restarts listening regardless.
+    if (e.error !== "no-speech" && e.error !== "aborted") {
+      speakAndShowVoiceStatus("Voice recognition error: " + e.error + ". Still listening…");
+    }
+  };
+  voiceRecognition.onend = () => {
+    // Chrome stops "continuous" recognition on its own after a while
+    // even with no error — restart automatically as long as the
+    // feature is still toggled on, so it behaves like it never
+    // stopped, rather than silently going deaf after a minute.
+    if (voiceEnabled) {
+      voiceRestartTimer = setTimeout(() => { try { voiceRecognition.start(); } catch (e) {} }, 300);
+    }
+  };
+  try {
+    voiceRecognition.start();
+    speakAndShowVoiceStatus('Voice commands on — try "save kitchen" or "confirm".');
+    return true;
+  } catch (e) {
+    speakAndShowVoiceStatus("Couldn't start the microphone.");
+    return false;
+  }
+}
+
+function stopVoiceCommands(){
+  if (voiceRestartTimer) { clearTimeout(voiceRestartTimer); voiceRestartTimer = null; }
+  if (voiceRecognition) {
+    voiceRecognition.onend = null; // don't auto-restart on a deliberate stop
+    try { voiceRecognition.stop(); } catch (e) {}
+    voiceRecognition = null;
+  }
+  speakAndShowVoiceStatus("Voice commands off.");
+}
+
+function toggleVoiceCommands(){
+  voiceEnabled = !voiceEnabled;
+  ["voiceToggleBtn", "dialVoiceToggleBtn"].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.textContent = "Voice commands: " + (voiceEnabled ? "On" : "Off");
+  });
+  if (voiceEnabled) {
+    const ok = startVoiceCommands();
+    if (!ok) {
+      voiceEnabled = false;
+      ["voiceToggleBtn", "dialVoiceToggleBtn"].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.textContent = "Voice commands: Off";
+      });
+    }
+  } else {
+    stopVoiceCommands();
+  }
+}
+
+document.getElementById("voiceToggleBtn").addEventListener("click", toggleVoiceCommands);
+document.getElementById("dialVoiceToggleBtn").addEventListener("click", toggleVoiceCommands);
 
 async function loadCocoModel(){
   if (cocoModel || cocoLoading) return;
@@ -4873,6 +5429,7 @@ function renderDetectionBanner(){
   if (!confirmed) {
     banner.innerHTML = "AI room detection on — no kitchen/bathroom/bedroom/living-room objects confirmed yet." +
       (rawLine ? "<br><span class=\"small\">" + rawLine + "</span>" : "");
+    document.getElementById("aiSaveDetectionBtn").style.display = "none";
     return;
   }
 
@@ -4893,7 +5450,36 @@ function renderDetectionBanner(){
     verdictHtml = "Detected: " + roomLabel(confirmed.room) + freshnessNote + " — recalibrate for a direction-based suggestion.";
   }
   banner.innerHTML = verdictHtml + (rawLine ? "<br><span class=\"small\">" + rawLine + "</span>" : "");
+
+  // This is the actual fix for "AI detection isn't sticking, it just
+  // keeps changing": previously there was no path at all from a live
+  // AI detection into permanent storage — the banner was always a
+  // transient read that recomputed every ~1.5s and reverted to
+  // nothing after 12s of losing sight of the object. Nothing was ever
+  // being saved from AI detection specifically, so of course it never
+  // "stuck." This button is the missing save step, writing into the
+  // exact same profile.areaDirections that Dial/Matrix/manual-tag/
+  // voice all share — once saved here, it stays saved until removed,
+  // regardless of what the live camera sees afterward.
+  const saveBtn = document.getElementById("aiSaveDetectionBtn");
+  saveBtn.style.display = "inline-block";
+  saveBtn.textContent = "Save this detection: " + roomLabel(confirmed.room);
+  saveBtn.dataset.room = confirmed.room;
 }
+
+document.getElementById("aiSaveDetectionBtn").addEventListener("click", () => {
+  const room = document.getElementById("aiSaveDetectionBtn").dataset.room;
+  if (!room) return;
+  if (!canAnalyze()) {
+    document.getElementById("taggedRoomsList").innerHTML =
+      '<p class="small">Sensor accuracy is too low to trust the current direction — recalibrate before saving.</p>';
+    return;
+  }
+  saveAreaDirection(room, currentHeading());
+  renderTaggedRooms();
+  document.getElementById("tagPanel").style.display = "block";
+  speakAndShowVoiceStatus("Saved " + roomLabel(room) + ".");
+});
 
 document.getElementById("aiToggleBtn").addEventListener("click", async () => {
   aiEnabled = !aiEnabled;
@@ -4908,6 +5494,7 @@ document.getElementById("aiToggleBtn").addEventListener("click", async () => {
     lastDetectionPredictions = [];
     lastDetectionAt = 0;
     document.getElementById("detectionBanner").style.display = "none";
+    document.getElementById("aiSaveDetectionBtn").style.display = "none";
   }
 });
 
