@@ -278,6 +278,12 @@
   .kb-table th { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--glass-border); color: var(--text-dim); font-weight: 700; }
   .kb-table td { padding: 6px 4px; border-bottom: 1px solid var(--glass-border); vertical-align: top; }
   .kb-table .zone-col { width: 12%; font-weight: 700; }
+
+  /* Matrix tab: guided walkthrough live-quality colors */
+  #guidedQuality.guided-quality-good { color: #2f9e44; font-weight: 600; }
+  #guidedQuality.guided-quality-caution { color: #c98a00; font-weight: 600; }
+  #guidedQuality.guided-quality-bad { color: #e64545; font-weight: 600; }
+  #guidedCaptureBtn:disabled { opacity: 0.5; }
 </style>
 </head>
 <body>
@@ -459,124 +465,124 @@
     <!-- BRAHMASTHAN SCREEN -->
     <section id="brahmasthanScreen" class="screen">
       <div class="card">
-        <h2>Brahmasthan (plot center)</h2>
-        <p>Pick how you want to describe your plot's boundary. The
-        centroid is exact math for the shape you give it — the only
-        source of error is how closely that shape matches the real plot.
-        For an irregular plot: use <strong>Custom</strong> if you already
-        have (or can measure) corner coordinates, <strong>Walls</strong>
-        if you only have wall lengths off a floor plan (the way most
-        Dutch plans are actually dimensioned), or <strong>Camera+GPS</strong>
-        outdoors. All three feed the exact same polygon-centroid math —
-        none of them approximate the shape.</p>
+        <h2>Find your home's center (Brahmasthan)</h2>
+        <p>This is the one point every direction in this app is measured
+        from — get this right first. Two ways to get it, both giving the
+        same exact math underneath:</p>
       </div>
 
       <div class="card">
-        <h2>Vastu Purusha Mandala (81-pada)</h2>
-        <p>The classical square diagram this whole app's directional
-        logic descends from: Brahma at the centre with 8 more deities
-        immediately around him, and the same 32 outer names the Dial
-        tab shows per-degree when its compass is set to 32 points —
-        drawn here as equal segments for legibility (the source texts
-        give some of them one square and others two or three; see the
-        note below). This is the diagram your plot's Brahmasthan
-        (calculated below) is the centre <em>of</em>.</p>
-        <canvas id="mandalaCanvas" width="600" height="600" style="width:100%; max-width:520px; display:block; margin:10px auto; touch-action:none;"></canvas>
-        <p class="small" id="mandalaTapInfo">Tap a segment to see which deity governs it and, per Brihat Samhita 53.51-54, which part of the House-God's own body it corresponds to.</p>
-        <p class="small" style="margin-top:8px; color:var(--text-dim);">Sources: Varahamihira's <em>Brihat Samhita</em>, Adhyaya 53 (tr. P.S. Sastri, 1946) — the primary enumeration, quadrant groupings, and limb-correspondences used here; cross-checked against the Hindi <em>Vishwakarma Vidya Prakash</em>, which restates the same 45 deities in the same order and grouping almost verbatim. King Bhoja's <em>Samarangana Sutradhara</em> (Ch. 11 &amp; 14) independently confirms the same 64/81/100-pada tradition and devotes a chapter specifically to assigning these deities to the House-God's limbs, though its own scanned pages have no text layer to quote directly, so it was checked visually for context rather than searched. Four minor inner deities the texts also name (Savita, an inner Indra, Rajayakshma, Apavatsa, each on a single small square beside the four shown here) are omitted from this simplified drawing rather than placed on a cell this app can't verify with confidence — see the Guide tab. This is a different, complementary layer to the 8-direction deity/planet table on the Matrix tab, not a replacement for it.</p>
+        <h2 style="margin-top:0;">Option A — Upload a floor plan photo (easiest)</h2>
+        <p>If you have a photo or screenshot of your floor plan, this finds
+        your home's true center automatically from the drawing itself — no
+        measuring, no typing dimensions.</p>
+        <button class="primary" id="goToPhotoDetectBtn">Go upload a floor plan photo</button>
       </div>
 
       <div class="card">
-        <h2>Verify a Dutch address (PDOK, free &amp; official)</h2>
-        <p>PDOK Locatieserver is the Dutch government's own free, open
-        address-lookup service (Kadaster/BAG data) — not a scraped
-        listing site, no terms-of-use conflict, no API key needed. It
-        confirms an address exists and gives its official coordinate.
-        It does <strong>not</strong> return a full building outline
-        (that needs a separate, key-gated Kadaster API this app doesn't
-        embed), so this verifies and locates an address — it doesn't
-        replace measuring or entering your plot's actual shape above.</p>
-        <input type="text" id="pdokAddressInput" placeholder="e.g. Museumplein 6, Amsterdam">
-        <button class="ghost" id="pdokLookupBtn">Look up address</button>
-        <p class="small" id="pdokStatus" style="margin-top:4px;"></p>
-        <div id="pdokResult" style="display:none;">
-          <p id="pdokResultText"></p>
-          <button class="ghost" id="pdokSaveBtn">Save this address to my home profile</button>
+        <h2 style="margin-top:0;">Option B — Enter it yourself</h2>
+        <p>Most Dutch homes are a simple rectangle — enter the width and
+        depth below and you're done. Only open "My plot isn't a simple
+        rectangle" for anything else: L-shape, pentagon, hexagon, a
+        triangle-plus-rectangle combination, a gomukh (narrow-front,
+        wide-rear) plot, a chamfered corner, or a fully irregular outline
+        with no particular name at all — the math underneath (see below)
+        doesn't special-case any of these; it treats every shape the same
+        way, exactly.</p>
+
+        <div class="segrow" id="shapeSeg">
+          <button data-shape="rect" class="active">Rectangle</button>
+          <button data-shape="poly">Custom</button>
+          <button data-shape="walls">Walls</button>
+          <button data-shape="auto">Camera+GPS</button>
         </div>
-      </div>
 
-      <div class="segrow" id="shapeSeg">
-        <button data-shape="rect" class="active">Rectangle</button>
-        <button data-shape="poly">Custom</button>
-        <button data-shape="walls">Walls</button>
-        <button data-shape="auto">Camera+GPS</button>
-      </div>
-
-      <div class="card" id="rectCard">
-        <div class="row">
-          <div>
-            <div class="small">Width (m)</div>
-            <input type="number" id="rectWidth" value="10">
-          </div>
-          <div>
-            <div class="small">Depth (m)</div>
-            <input type="number" id="rectDepth" value="8">
+        <div class="card" id="rectCard" style="box-shadow:none; border:none; padding:10px 0 0;">
+          <div class="row">
+            <div>
+              <div class="small">Width (m)</div>
+              <input type="number" id="rectWidth" value="10">
+            </div>
+            <div>
+              <div class="small">Depth (m)</div>
+              <input type="number" id="rectDepth" value="8">
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="card" id="polyCard" style="display:none;">
-        <div class="small" style="margin-bottom:6px;">
-          Corners, in order around the boundary. Need at least 3.
-        </div>
-        <div id="vertexList"></div>
-        <button class="ghost" id="addVertexBtn">+ Add corner</button>
-      </div>
+        <details id="advancedShapeDetails" style="margin-top:6px;">
+          <summary style="cursor:pointer; font-weight:700;">My plot isn't a simple rectangle (advanced)</summary>
+          <div style="margin-top:10px;">
+            <p class="small">Tapping Custom, Walls, or Camera+GPS above switches
+            the entry form below to match. The centroid math (the same
+            area-moment/shoelace formula surveyors use) is exact for
+            <strong>any simple closed shape you give it — any number of
+            corners, any angles, symmetric or not</strong>: triangle,
+            rectangle, pentagon, hexagon, a triangle bolted onto a
+            rectangle, a gomukh (narrow-front) plot, or a shape with no
+            name at all. It isn't tuned for any particular shape family;
+            Rectangle above is just the fastest form to fill in for the
+            single most common case, not a limitation of what the other
+            three can handle.</p>
 
-      <div class="card" id="wallsCard" style="display:none;">
-        <div class="small" style="margin-bottom:6px;">
-          For an L-shaped, chamfered, or otherwise non-rectangular plot
-          where you have <strong>wall lengths</strong> from a floor
-          plan or tape measure rather than coordinates — the way most
-          Dutch floor plans are actually dimensioned. Start at any
-          corner and enter each wall in order going around the
-          boundary (either direction is fine, as long as you stay
-          consistent): its length, then how many degrees you turn
-          before the next wall (90° for a normal square corner; use
-          the exact angle for a chamfered/angled corner, negative to
-          turn the other way). This walks out your plot's exact
-          outline and feeds it through the same exact centroid math as
-          Custom entry — no manual sub-shape splitting needed.
-        </div>
-        <div id="wallList"></div>
-        <button class="ghost" id="addWallBtn">+ Add wall</button>
-        <p class="small" id="wallClosureNote" style="margin-top:8px; color:var(--text-dim);"></p>
-      </div>
+            <div class="card" id="polyCard" style="display:none; box-shadow:none; border:none; padding:0;">
+              <div class="small" style="margin-bottom:6px;">
+                Corners, in order around the boundary. Need at least 3 — any
+                shape works: 3 corners for a triangle, 5 for a pentagon, 6
+                for a hexagon, however many your plot actually has.
+              </div>
+              <div id="vertexList"></div>
+              <button class="ghost" id="addVertexBtn">+ Add corner</button>
+            </div>
 
-      <div class="card" id="autoCard" style="display:none;">
-        <p style="margin-bottom:8px;">
-          Walk to each corner, sight it through the camera, and tap
-          Capture — this uses your phone's GPS at each tap, not full 3D
-          room scanning (that needs dedicated depth hardware no plain
-          web page can access). <strong>This needs an outdoor GPS fix to
-          work</strong> — indoors it will very often time out or fail
-          entirely, since GPS needs a clear view of the sky. For an
-          indoor plot or room, use Rectangle or Custom entry above
-          instead — they're exact and don't depend on GPS at all.
-        </p>
-        <div id="autoCameraWrap">
-          <video id="autoVideo" autoplay playsinline muted></video>
-          <div id="autoReticle"><div></div></div>
-        </div>
-        <p class="small" id="autoStatus">0 corners captured. Need at least 3.</p>
-        <div class="row">
-          <button class="ghost" id="autoCaptureBtn">Capture corner</button>
-          <button class="ghost" id="autoUndoBtn">Undo last</button>
-        </div>
-        <button class="primary" id="autoFinishBtn" style="margin-top:8px;">Finish &amp; calculate</button>
-      </div>
+            <div class="card" id="wallsCard" style="display:none; box-shadow:none; border:none; padding:0;">
+              <div class="small" style="margin-bottom:6px;">
+                For a plot of <strong>any shape</strong> — L, pentagon,
+                hexagon, a triangle stuck onto a rectangle, a gomukh
+                (narrow-front) plot, chamfered corners, or anything fully
+                irregular — where you have <strong>wall lengths</strong>
+                from a floor plan or tape measure rather than coordinates,
+                the way most Dutch floor plans are actually dimensioned.
+                Start at any corner and enter each wall in order going
+                around the boundary (either direction is fine, as long as
+                you stay consistent): its length, then how many degrees
+                you turn before the next wall (90° for a normal square
+                corner; any other angle for a pentagon/hexagon/chamfered
+                corner — a regular pentagon turns 72° each corner, a
+                regular hexagon 60°; use whatever your actual plot's
+                angles are). Add as many walls as your plot has sides —
+                there's no limit tied to any particular shape.
+              </div>
+              <div id="wallList"></div>
+              <button class="ghost" id="addWallBtn">+ Add wall</button>
+              <p class="small" id="wallClosureNote" style="margin-top:8px; color:var(--text-dim);"></p>
+            </div>
 
-      <button class="primary" id="calcBrahmasthanBtn">Calculate Brahmasthan</button>
+            <div class="card" id="autoCard" style="display:none; box-shadow:none; border:none; padding:0;">
+              <p style="margin-bottom:8px;">
+                Walk to each corner, sight it through the camera, and tap
+                Capture — this uses your phone's GPS at each tap.
+                <strong>This needs an outdoor GPS fix to work</strong> —
+                indoors it will very often time out or fail, since GPS
+                needs a clear view of the sky. For an indoor plot, use
+                Rectangle, Custom, or Walls instead.
+              </p>
+              <div id="autoCameraWrap">
+                <video id="autoVideo" autoplay playsinline muted></video>
+                <div id="autoReticle"><div></div></div>
+              </div>
+              <p class="small" id="autoStatus">0 corners captured. Need at least 3.</p>
+              <div class="row">
+                <button class="ghost" id="autoCaptureBtn">Capture corner</button>
+                <button class="ghost" id="autoUndoBtn">Undo last</button>
+              </div>
+              <button class="primary" id="autoFinishBtn" style="margin-top:8px;">Finish &amp; calculate</button>
+            </div>
+          </div>
+        </details>
+
+        <button class="primary" id="calcBrahmasthanBtn" style="margin-top:12px;">Calculate Brahmasthan</button>
+      </div>
 
       <div id="brahmaError" class="card warn" style="display:none;"></div>
       <div id="brahmaResult" class="card" style="display:none;">
@@ -597,23 +603,83 @@
         </div>
         <div id="savedHomeBody" class="small"></div>
       </div>
+
+      <div class="card">
+        <h2 style="margin-top:0;">Now find each room's direction</h2>
+        <p>Once your Brahmasthan is set (either way above), go to the
+        <strong>Matrix</strong> tab and use the walkthrough there: stand at
+        this center point, and it'll guide you through each room one at a
+        time with a live compass reading and an instant Ideal/Remedy/Forbidden verdict.</p>
+        <button class="ghost" id="goToMatrixBtn">Go to room-direction walkthrough</button>
+      </div>
+
+      <details class="card">
+        <summary style="cursor:pointer; font-weight:700;">Reference: verify a Dutch address, and the classical mandala diagram</summary>
+        <div style="margin-top:10px;">
+          <h2 style="font-size:15px;">Verify a Dutch address (PDOK, free &amp; official)</h2>
+          <p class="small">PDOK Locatieserver is the Dutch government's own free, open
+          address-lookup service (Kadaster/BAG data). It confirms an address
+          exists and gives its official coordinate — it does
+          <strong>not</strong> return a full building outline, so this
+          verifies/locates an address rather than replacing the shape entry
+          above.</p>
+          <input type="text" id="pdokAddressInput" placeholder="e.g. Museumplein 6, Amsterdam">
+          <button class="ghost" id="pdokLookupBtn">Look up address</button>
+          <p class="small" id="pdokStatus" style="margin-top:4px;"></p>
+          <div id="pdokResult" style="display:none;">
+            <p id="pdokResultText"></p>
+            <button class="ghost" id="pdokSaveBtn">Save this address to my home profile</button>
+          </div>
+
+          <h2 style="font-size:15px; margin-top:16px;">Vastu Purusha Mandala (81-pada)</h2>
+          <p class="small">The classical square diagram this whole app's directional
+          logic descends from — this is the diagram your Brahmasthan above is
+          the centre <em>of</em>.</p>
+          <canvas id="mandalaCanvas" width="600" height="600" style="width:100%; max-width:520px; display:block; margin:10px auto; touch-action:none;"></canvas>
+          <p class="small" id="mandalaTapInfo">Tap a segment to see which deity governs it and, per Brihat Samhita 53.51-54, which part of the House-God's own body it corresponds to.</p>
+          <p class="small" style="margin-top:8px; color:var(--text-dim);">Sources: Varahamihira's <em>Brihat Samhita</em>, Adhyaya 53 (tr. P.S. Sastri, 1946) — the primary enumeration, quadrant groupings, and limb-correspondences used here; cross-checked against the Hindi <em>Vishwakarma Vidya Prakash</em>, which restates the same 45 deities in the same order and grouping almost verbatim. King Bhoja's <em>Samarangana Sutradhara</em> (Ch. 11 &amp; 14) independently confirms the same 64/81/100-pada tradition. Four minor inner deities the texts also name are omitted from this simplified drawing — see the Guide tab. This is a different, complementary layer to the 8-direction deity/planet table on the Matrix tab, not a replacement for it.</p>
+        </div>
+      </details>
     </section>
 
     <!-- MATRIX SCREEN -->
     <section id="matrixScreen" class="screen">
       <div class="card">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <h2 style="margin:0;">Vastu matrix checker</h2>
-          <button id="matrixCameraToggleBtn" class="lens-chip" style="box-shadow:none; padding:5px 10px; font-size:11px;">Show camera</button>
+        <h2>Room directions, one at a time</h2>
+        <p>The simple way to check your home: stand at your <strong>Brahmasthan
+        (the center point from the Center tab)</strong>, then work through each
+        room below in turn — face the room, hold the phone flat, tap Capture.
+        You'll see instantly whether that direction is ideal, workable with a
+        remedy, or one to avoid, and it saves automatically as you go.</p>
+      </div>
+
+      <div class="card" id="guidedIntroCard">
+        <p class="small">Before you start: take off any magnetic phone
+        case/watch, step away from metal furniture, appliances, and rebar-heavy
+        walls, then wave the phone in a slow figure-eight to calibrate — the
+        live reading below will tell you if it's stable enough to trust.</p>
+        <button class="primary" id="startGuidedBtn">Start walkthrough</button>
+      </div>
+
+      <div class="card" id="guidedStepCard" style="display:none;">
+        <p class="small" id="guidedProgress" style="color:var(--text-dim); margin-bottom:2px;"></p>
+        <h2 id="guidedRoomName" style="margin-top:0;"></h2>
+        <p class="small" id="guidedInstruction">Face this room (or where it
+        will be) from your home's center, and hold the phone flat like a
+        handheld compass.</p>
+        <div id="guidedHeadingBox" style="text-align:center; padding:14px 0;">
+          <div id="guidedHeadingNum" style="font-size:34px; font-weight:800;">—</div>
+          <p class="small" id="guidedQuality">Waiting for a stable reading…</p>
         </div>
-        <p>Stand where the element is (or will be) and pick what you're
-        checking. Reading is taken from the Dial tab's current heading.
-        Turn on the camera above to see what you're pointing at while
-        you check.</p>
-        <p class="small" id="matrixHeadingLine">—</p>
-        <select id="matrixSaveDirectionSelect" class="full" style="margin-top:8px;"></select>
-        <button id="matrixSaveDirectionBtn" class="ghost">Save this direction</button>
-        <p class="small" id="matrixSaveDirectionStatus" style="margin-top:4px;"></p>
+        <div class="row">
+          <button class="ghost" id="guidedSkipBtn">Skip this room</button>
+          <button class="primary" id="guidedCaptureBtn">Capture this direction</button>
+        </div>
+        <div id="guidedVerdict"></div>
+        <div class="row" id="guidedNextRow" style="display:none; margin-top:8px;">
+          <button class="ghost" id="guidedRedoBtn">Redo</button>
+          <button class="primary" id="guidedSaveNextBtn">Save &amp; next room</button>
+        </div>
       </div>
 
       <div class="card" id="matrixSavedHomeCard" style="display:none;">
@@ -622,14 +688,29 @@
         <div id="matrixSavedHomeBody"></div>
       </div>
 
-      <div class="card" id="matrixCameraCard" style="display:none; padding:0; overflow:hidden;">
-        <video id="matrixVideo" autoplay playsinline muted style="width:100%; display:block; border-radius:14px; max-height:260px; object-fit:cover; background:#050505;"></video>
-        <p class="small" id="matrixCameraStatus" style="padding:8px 12px;"></p>
-      </div>
-      <p class="small" style="margin: 4px 4px 2px;"><strong>Live check</strong> — point and check any spot right now:</p>
-      <div id="matrixButtons"></div>
-      <div id="matrixResult"></div>
-      <div id="matrixFeedback"></div>
+      <details class="card" style="padding-top:10px;">
+        <summary style="cursor:pointer; font-weight:700;">Advanced: check a single room anytime, or enter a direction manually</summary>
+        <div style="margin-top:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2 style="margin:0; font-size:15px;">Check any room right now</h2>
+            <button id="matrixCameraToggleBtn" class="lens-chip" style="box-shadow:none; padding:5px 10px; font-size:11px;">Show camera</button>
+          </div>
+          <p class="small">Same live-heading check as the walkthrough above,
+          without stepping through every room in order.</p>
+          <p class="small" id="matrixHeadingLine">—</p>
+          <select id="matrixSaveDirectionSelect" class="full" style="margin-top:8px;"></select>
+          <button id="matrixSaveDirectionBtn" class="ghost">Save this direction</button>
+          <p class="small" id="matrixSaveDirectionStatus" style="margin-top:4px;"></p>
+          <div id="matrixCameraCard" style="display:none; padding:0; overflow:hidden; margin-top:8px;">
+            <video id="matrixVideo" autoplay playsinline muted style="width:100%; display:block; border-radius:14px; max-height:260px; object-fit:cover; background:#050505;"></video>
+            <p class="small" id="matrixCameraStatus" style="padding:8px 12px;"></p>
+          </div>
+          <div id="matrixButtons" style="margin-top:8px;"></div>
+          <div id="matrixResult"></div>
+          <div id="matrixFeedback"></div>
+        </div>
+      </details>
+
       <div class="card">
         <p>Placements reflect principles commonly cited across popular
         Vastu literature, evaluated at the 8-direction level. Not a
@@ -695,7 +776,11 @@
 
         <button class="primary" id="analyzeFloorPlanBtn" style="margin-top:10px;">Analyze this floor plan</button>
         <p class="small" style="margin-top:4px;">The simplest path: one tap finds the
-        building's own true center (Brahmasthan) from the drawn outline, then reads every room
+        building's own true center (Brahmasthan) from the drawn outline, whatever shape
+        that outline is — rectangle, L, pentagon, hexagon, a triangle-plus-rectangle
+        combination, a gomukh (narrow-front) plot, or a fully irregular footprint with no
+        name at all. It traces the actual drawn boundary and computes its real area
+        centroid rather than assuming any particular shape, then reads every room
         label it can (English, Dutch, or Hindi — Devanagari or romanized) and works out that
         room's direction from the center it just found. Needs internet the first time (to load
         the text-recognition models) and works fully offline afterward. Always check the marked
@@ -714,6 +799,18 @@
             <div class="row">
               <button class="ghost" id="detectBrahmaBtn">Auto-detect Brahmasthan only</button>
               <button class="ghost" id="setBrahmaPointBtn">Set Brahmasthan point manually (tap the plan)</button>
+            </div>
+            <div id="copyFloorCentroidRow" style="display:none; margin-top:8px;">
+              <div class="small" style="margin-bottom:4px;">Multiple floors: if this
+              floor has the <strong>exact same footprint</strong> as another one
+              you've already detected (common for upper floors that don't step
+              back), copy its point instead of re-detecting — but if this floor's
+              outline is actually different (a setback terrace, a smaller top
+              floor, a dormer that changes the shape), leave each floor to its
+              own auto-detect above instead, since they genuinely have different
+              centers.</div>
+              <select id="copyFloorCentroidSelect" class="full"></select>
+              <button class="ghost" id="copyFloorCentroidBtn" style="margin-top:6px;">Copy this floor's point</button>
             </div>
             <button class="ghost" id="runOcrBtn" style="margin-top:8px;">Read floor plan text (OCR) only</button>
             <div class="row" style="margin-top:8px;">
@@ -2200,11 +2297,30 @@ function setStack(showId, hideId){
 function isCompassScreenActive(){
   const dial = document.getElementById("dialScreen");
   const lens = document.getElementById("lensScreen");
-  return (dial && dial.classList.contains("active")) || (lens && lens.classList.contains("active"));
+  const matrix = document.getElementById("matrixScreen");
+  // Matrix is included here because it shows its own live heading line
+  // and the new guided walkthrough below depends on that being
+  // genuinely live — before this fix, render() bailed out immediately
+  // whenever the Matrix tab was the active screen, so its heading
+  // display silently froze at whatever it last showed on the Dial/Lens
+  // tab instead of updating as the person turned to face each room.
+  // The actual capture (currentHeading()) always read live sensor
+  // state regardless, but a frozen number on-screen invites exactly
+  // the kind of "which way am I actually facing right now" confusion
+  // that leads to a wrong direction being saved.
+  return (dial && dial.classList.contains("active")) ||
+    (lens && lens.classList.contains("active")) ||
+    (matrix && matrix.classList.contains("active"));
 }
 
 function render(){
   if (!isCompassScreenActive()) return;
+  // Independent of the dial-specific early-returns below (no heading
+  // yet / not stable enough to analyze) — updateGuidedLiveHeading has
+  // its own handling for both of those states, and needs to run in
+  // both cases so the walkthrough's live number/quality line never
+  // just goes stale instead of explaining why.
+  updateGuidedLiveHeading();
   if (state.recentHeadings.length === 0) return;
 
   if (!canAnalyze()) {
@@ -2907,10 +3023,12 @@ function showBrahmaResult(result){
   const warnEl = document.getElementById("brahmaConvexWarning");
   let warnings = [];
   if (!result.convex) {
-    warnings.push("This is an irregular (non-convex / L-shaped) plot. " +
-      "The geometric centroid can land outside the built footprint. Several " +
-      "Vastu traditions treat irregular plots differently from a simple " +
-      "rectangle — verify against your specific method before relying on this point.");
+    warnings.push("This is a non-convex plot (it has at least one \"inward\" corner, e.g. an " +
+      "L, a gomukh, or any other re-entrant outline). The math is still exact for its true " +
+      "shape — that isn't affected by convexity — but the geometric centroid itself can " +
+      "legitimately land outside the built footprint for a shape like this (e.g. in the " +
+      "notch of an L). Several Vastu traditions treat that case differently from a simple " +
+      "convex plot — verify against your specific method before relying on this point.");
   }
   if (typeof result.closureGap === "number" && result.closureGap >= 0.5) {
     warnings.push("The wall boundary you entered doesn't close cleanly (a gap of " +
@@ -3044,6 +3162,22 @@ document.getElementById("mandalaCanvas").addEventListener("click", (e) => {
   infoEl.textContent = text;
 });
 window.addEventListener("resize", () => drawMandala());
+
+/**
+ * The Center tab's two "bridge" buttons — switching tabs directly
+ * rather than just telling the person to do it themselves, since
+ * that hand-off between tabs (get your center here, then go check
+ * rooms there) was exactly the kind of disconnect that made the app
+ * feel like several unrelated tools rather than one flow.
+ */
+document.getElementById("goToPhotoDetectBtn").addEventListener("click", () => {
+  document.querySelector('header nav button[data-tab="design"]').click();
+  const uploadInput = document.getElementById("floorPlanUpload");
+  if (uploadInput) uploadInput.scrollIntoView({ behavior: "smooth", block: "center" });
+});
+document.getElementById("goToMatrixBtn").addEventListener("click", () => {
+  document.querySelector('header nav button[data-tab="matrix"]').click();
+});
 
 document.getElementById("calcBrahmasthanBtn").addEventListener("click", () => {
   const errEl = document.getElementById("brahmaError");
@@ -3912,6 +4046,154 @@ function renderMatrixSavedHome(){
 wireSaveDirectionControl("dialSaveDirectionSelect", "dialSaveDirectionBtn", "dialSaveDirectionStatus", renderSavedHomeCard);
 wireSaveDirectionControl("matrixSaveDirectionSelect", "matrixSaveDirectionBtn", "matrixSaveDirectionStatus", renderMatrixSavedHome);
 
+/* ==================================================================
+   Matrix tab: guided walkthrough — the simple, default way to check
+   every room. One room at a time, a live heading with a plain-
+   language quality indicator, an instant verdict, and auto-save —
+   built specifically so a wrong direction doesn't get saved because
+   the person couldn't tell whether their compass reading was
+   trustworthy at the moment they captured it.
+   ================================================================== */
+const GUIDED_WALKTHROUGH_ORDER = [
+  "ENTRANCE", "KITCHEN", "TOILET", "LIVING_ROOM", "PRIMARY_BEDROOM",
+  "BEDROOM_2", "POOJA_ROOM", "STAIRS", "WASHING_AREA", "GARDEN",
+  "BACKYARD", "WATER_TANK", "HEAT_PUMP_AREA"
+];
+let guidedIndex = -1; // -1 = walkthrough not started yet
+let guidedResults = [];
+let pendingGuidedCapture = null;
+
+function currentGuidedElement(){
+  const key = GUIDED_WALKTHROUGH_ORDER[guidedIndex];
+  return key ? HOME_ELEMENTS.find(e => e.key === key) : null;
+}
+
+function guidedIsActive(){
+  return guidedIndex >= 0 && guidedIndex < GUIDED_WALKTHROUGH_ORDER.length &&
+    document.getElementById("guidedStepCard").style.display !== "none";
+}
+
+function startGuidedWalkthrough(){
+  guidedIndex = 0;
+  guidedResults = [];
+  pendingGuidedCapture = null;
+  document.getElementById("guidedIntroCard").style.display = "none";
+  document.getElementById("guidedStepCard").style.display = "block";
+  renderGuidedStep();
+}
+document.getElementById("startGuidedBtn").addEventListener("click", startGuidedWalkthrough);
+
+function renderGuidedStep(){
+  const el = currentGuidedElement();
+  if (!el) { renderGuidedComplete(); return; }
+  document.getElementById("guidedProgress").textContent =
+    "Room " + (guidedIndex + 1) + " of " + GUIDED_WALKTHROUGH_ORDER.length;
+  document.getElementById("guidedRoomName").textContent = el.label;
+  document.getElementById("guidedVerdict").innerHTML = "";
+  document.getElementById("guidedCaptureBtn").style.display = "inline-block";
+  document.getElementById("guidedNextRow").style.display = "none";
+  pendingGuidedCapture = null;
+  updateGuidedLiveHeading();
+}
+
+/**
+ * Called from the main render() loop (see isCompassScreenActive/render
+ * above) every animation frame while the Matrix tab is open — this is
+ * the "live suggestion" piece: the number and the plain-language
+ * quality line are never stale, and the Capture button is disabled
+ * outright whenever the reading isn't stable enough to trust, so a
+ * shaky/interfered reading can't silently get saved as this room's
+ * direction.
+ */
+function updateGuidedLiveHeading(){
+  if (!guidedIsActive()) return;
+  const headingEl = document.getElementById("guidedHeadingNum");
+  const qualEl = document.getElementById("guidedQuality");
+  const captureBtn = document.getElementById("guidedCaptureBtn");
+  if (!headingEl || pendingGuidedCapture) return; // frozen once a reading's been captured for this room, until Redo
+  if (state.recentHeadings.length === 0) {
+    headingEl.textContent = "—";
+    qualEl.textContent = "Starting the compass — hold the phone flat.";
+    qualEl.className = "small";
+    captureBtn.disabled = true;
+    return;
+  }
+  if (!canAnalyze()) {
+    headingEl.textContent = "—";
+    qualEl.textContent = "Not stable yet — move away from metal/electronics and wave the phone in a slow figure-eight, then hold it flat and still.";
+    qualEl.className = "small guided-quality-bad";
+    captureBtn.disabled = true;
+    return;
+  }
+  const heading = currentHeading();
+  headingEl.textContent = Math.round(heading) + "° · " + sectorName(sectorIndex(heading, 8), 8);
+  const goodQuality = state.quality === "good";
+  qualEl.textContent = goodQuality ?
+    "Reading is stable — hold steady and tap Capture." :
+    "Reading is usable but a bit unsteady (±" + state.errorDeg + "°) — hold as still as you can, or recalibrate for a tighter reading.";
+  qualEl.className = "small " + (goodQuality ? "guided-quality-good" : "guided-quality-caution");
+  captureBtn.disabled = false;
+}
+
+document.getElementById("guidedCaptureBtn").addEventListener("click", () => {
+  if (!canAnalyze()) return; // belt-and-braces — the button is disabled in this case, but never trust only a disabled attribute
+  const el = currentGuidedElement();
+  if (!el) return;
+  const heading = currentHeading();
+  const dir8 = sectorName(sectorIndex(heading, 8), 8);
+  const r = evaluateMatrix(el.key, dir8);
+  const statusLabel = { IDEAL: "Ideal", PERMISSIBLE_WITH_REMEDY: "Permissible with remedy", FORBIDDEN: "Forbidden" }[r.status];
+  const cls = r.status === "IDEAL" ? "" : (r.status === "FORBIDDEN" ? "warn" : "tertiary");
+  document.getElementById("guidedVerdict").innerHTML =
+    '<div class="card ' + cls + '" style="margin-top:8px;"><h2 style="margin-top:0;">' + dir8 + " (" + Math.round(heading) + "°) — " + statusLabel + '</h2>' +
+    '<p>' + r.explanation + '</p>' +
+    formatRemediesHtml(r.remedies) +
+    formatStructuralOptionHtml(r.structuralOption) +
+    '</div>';
+  pendingGuidedCapture = { key: el.key, label: el.label, bearing: heading, dir8: dir8, status: r.status };
+  document.getElementById("guidedCaptureBtn").style.display = "none";
+  document.getElementById("guidedNextRow").style.display = "flex";
+});
+
+document.getElementById("guidedRedoBtn").addEventListener("click", () => {
+  pendingGuidedCapture = null;
+  document.getElementById("guidedVerdict").innerHTML = "";
+  document.getElementById("guidedCaptureBtn").style.display = "inline-block";
+  document.getElementById("guidedNextRow").style.display = "none";
+});
+
+document.getElementById("guidedSaveNextBtn").addEventListener("click", () => {
+  if (pendingGuidedCapture) {
+    saveAreaDirection(pendingGuidedCapture.key, pendingGuidedCapture.bearing);
+    guidedResults.push(pendingGuidedCapture);
+    renderMatrixSavedHome();
+  }
+  guidedIndex++;
+  renderGuidedStep();
+});
+
+document.getElementById("guidedSkipBtn").addEventListener("click", () => {
+  guidedIndex++;
+  renderGuidedStep();
+});
+
+function renderGuidedComplete(){
+  const card = document.getElementById("guidedStepCard");
+  const rows = guidedResults.map(r => {
+    const badgeCls = r.status === "IDEAL" ? "badge-ideal" : (r.status === "FORBIDDEN" ? "badge-forbidden" : "badge-remedy");
+    const badgeLabel = r.status === "IDEAL" ? "Ideal" : (r.status === "FORBIDDEN" ? "Forbidden" : "Remedy");
+    return '<div class="room-compliance-row"><span>' + r.label + " — " + r.dir8 + '</span>' +
+      '<span class="badge ' + badgeCls + '">' + badgeLabel + '</span></div>';
+  }).join("");
+  card.innerHTML =
+    "<h2 style='margin-top:0;'>Walkthrough complete</h2>" +
+    "<p class=\"small\">Saved " + guidedResults.length + " of " + GUIDED_WALKTHROUGH_ORDER.length +
+    " rooms to your home profile — see them anytime on the Center tab's saved-home card, or below.</p>" +
+    rows +
+    '<button class="primary" id="guidedRestartBtn" style="margin-top:10px;">Check again</button>';
+  document.getElementById("guidedRestartBtn").addEventListener("click", startGuidedWalkthrough);
+}
+
 const matrixButtonsEl = document.getElementById("matrixButtons");
 HOME_ELEMENTS.forEach(el => {
   const btn = document.createElement("button");
@@ -4444,9 +4726,12 @@ function detectFloorPlanFootprint(sourceCanvas, options){
  * the image, trimmed to the 2nd-98th percentile on each axis so a
  * single stray mark (a logo, a stamp, a scale bar off in a corner)
  * can't drag the box out to the whole page. Cruder than a true
- * outline trace — it can't tell an L-shaped plot's true centroid from
- * its rectangle's — but it reliably excludes blank margins, which the
- * plain image-midpoint approximation this app used before could not.
+ * outline trace — it can't tell any non-rectangular plot's true area
+ * centroid from its bounding rectangle's (this is true for an L, a
+ * pentagon, a gomukh, or anything else non-rectangular — not an L-
+ * shape-specific gap) — but it reliably excludes blank margins, which
+ * the plain image-midpoint approximation this app used before could
+ * not.
  */
 function detectInkBoundingBox(sourceCanvas, options){
   options = options || {};
@@ -4896,11 +5181,59 @@ function renderFloorPlanTabs(){
       document.getElementById("floorPlanToggleBtn").textContent = "Show behind plan: On";
       renderFloorPlanTabs();
       renderOcrResults();
+      renderCopyFloorCentroidOptions();
       if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
     });
     container.appendChild(btn);
   });
+  renderCopyFloorCentroidOptions();
 }
+
+/**
+ * Multi-floor convenience: most Dutch houses have every floor sharing
+ * the same outer footprint (see the Guide tab's "vertical stacking"
+ * note), so re-running full outline detection per floor is often
+ * unnecessary work — this lets a floor borrow another floor's already-
+ * detected point directly. Only offered when there's more than one
+ * floor to borrow from, and the copy is explicitly tagged as "copied"
+ * (not "detected") wherever it's shown, so it's never confused with an
+ * independent detection for a floor whose shape actually differs.
+ */
+function renderCopyFloorCentroidOptions(){
+  const row = document.getElementById("copyFloorCentroidRow");
+  const sel = document.getElementById("copyFloorCentroidSelect");
+  if (!row || !sel) return;
+  const others = floorPlans.map((fp, i) => ({ fp, i })).filter(({ i }) => i !== currentFloorIndex && floorPlans[i].detectedCentroid);
+  if (currentFloorIndex < 0 || others.length === 0) {
+    row.style.display = "none";
+    return;
+  }
+  row.style.display = "block";
+  sel.innerHTML = others.map(({ fp, i }) => '<option value="' + i + '">' + fp.label + '</option>').join("");
+}
+
+document.getElementById("copyFloorCentroidBtn").addEventListener("click", () => {
+  if (currentFloorIndex < 0) return;
+  const fromIdx = parseInt(document.getElementById("copyFloorCentroidSelect").value, 10);
+  const fromEntry = floorPlans[fromIdx];
+  if (!fromEntry || !fromEntry.detectedCentroid) return;
+  const entry = floorPlans[currentFloorIndex];
+  // Copying is only geometrically valid if both floors' images are the
+  // same pixel size (same photo scale/crop) — otherwise a point in one
+  // image's pixel space doesn't correspond to the same real-world spot
+  // in another. Scale it across proportionally rather than silently
+  // misplacing it (or refusing outright) when the two photos happen to
+  // differ in resolution but still show the same footprint.
+  const sx = entry.effectiveCanvas.width / fromEntry.effectiveCanvas.width;
+  const sy = entry.effectiveCanvas.height / fromEntry.effectiveCanvas.height;
+  entry.detectedCentroid = { x: fromEntry.detectedCentroid.x * sx, y: fromEntry.detectedCentroid.y * sy };
+  entry.detectionMethod = "copied";
+  rederiveOcrBearings(entry, currentFloorIndex);
+  document.getElementById("planDetectStatus").textContent =
+    "Copied the Brahmasthan point from " + fromEntry.label + " — every direction on this floor has been re-measured against it.";
+  renderOcrResults();
+  drawPlan2d(rooms, lastDesignCentroid);
+});
 
 document.getElementById("floorPlanUpload").addEventListener("change", (e) => {
   const files = Array.from(e.target.files || []);
@@ -5534,7 +5867,7 @@ function drawPlan2d(roomsList, centroid){
     // The Brahmasthan point itself — always shown when an image is
     // loaded, whether it came from auto-detection, the bounding-box
     // fallback, or a manual tap, so it's never invisible/implicit.
-    const methodLabel = { outline: "auto-detected", "bounding-box": "auto (bounding-box)", manual: "set manually", "image-midpoint": "image midpoint (fallback)" }
+    const methodLabel = { outline: "auto-detected", "bounding-box": "auto (bounding-box)", manual: "set manually", copied: "copied from another floor", "image-midpoint": "image midpoint (fallback)" }
       [floorPlans[currentFloorIndex].detectionMethod] || "image midpoint (default)";
     ctx.beginPath();
     ctx.moveTo(overlayCx - 10, overlayCy); ctx.lineTo(overlayCx + 10, overlayCy);
@@ -6508,7 +6841,17 @@ window.__testHooks = {
   detectFloorPlanBrahmasthan: (typeof detectFloorPlanBrahmasthan !== "undefined") ? detectFloorPlanBrahmasthan : null,
   getPlanCentroidPx: (typeof getPlanCentroidPx !== "undefined") ? getPlanCentroidPx : null,
   rederiveOcrBearings: (typeof rederiveOcrBearings !== "undefined") ? rederiveOcrBearings : null,
-  roomBearingFromCentroid: (typeof roomBearingFromCentroid !== "undefined") ? roomBearingFromCentroid : null
+  roomBearingFromCentroid: (typeof roomBearingFromCentroid !== "undefined") ? roomBearingFromCentroid : null,
+  state: (typeof state !== "undefined") ? state : null,
+  pushHeadingReading: (typeof pushHeadingReading !== "undefined") ? pushHeadingReading : null,
+  canAnalyze: (typeof canAnalyze !== "undefined") ? canAnalyze : null,
+  currentHeading: (typeof currentHeading !== "undefined") ? currentHeading : null,
+  render: (typeof render !== "undefined") ? render : null,
+  startGuidedWalkthrough: (typeof startGuidedWalkthrough !== "undefined") ? startGuidedWalkthrough : null,
+  GUIDED_WALKTHROUGH_ORDER: (typeof GUIDED_WALKTHROUGH_ORDER !== "undefined") ? GUIDED_WALKTHROUGH_ORDER : null,
+  isCompassScreenActive: (typeof isCompassScreenActive !== "undefined") ? isCompassScreenActive : null,
+  getFloorPlans: () => (typeof floorPlans !== "undefined") ? floorPlans : null,
+  getCurrentFloorIndex: () => (typeof currentFloorIndex !== "undefined") ? currentFloorIndex : null
 };
 </script>
 
