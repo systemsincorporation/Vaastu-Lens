@@ -293,7 +293,7 @@
     <nav>
       <button data-tab="dial" class="active">Dial</button>
       <button data-tab="lens">Lens</button>
-      <button data-tab="brahmasthan">Center</button>
+      <button data-tab="brahmasthan">Centroid</button>
       <button data-tab="matrix">Matrix</button>
       <button data-tab="design">Design</button>
       <button data-tab="nlrules">NL Rules</button>
@@ -471,16 +471,170 @@
         same exact math underneath:</p>
       </div>
 
-      <div class="card">
-        <h2 style="margin-top:0;">Option A — Upload a floor plan photo (easiest)</h2>
+      <div class="card" style="padding-bottom:2px;">
+        <h2 style="margin-top:0;">Option A — Upload a floor plan photo (easiest, most accurate for irregular shapes)</h2>
         <p>If you have a photo or screenshot of your floor plan, this finds
-        your home's true center automatically from the drawing itself — no
-        measuring, no typing dimensions.</p>
-        <button class="primary" id="goToPhotoDetectBtn">Go upload a floor plan photo</button>
+        your home's true center automatically by tracing the drawn outline
+        itself — any shape, no measuring, no typing dimensions. See the
+        Guide tab for exactly how the tracing/centroid math works.</p>
+      </div>
+      <div class="card">
+        <h2>Floor plans (multiple floors supported)</h2>
+        <p>Upload one image per floor (ground floor, first floor, etc.)
+        — plain photos/screenshots only, not PDFs; screenshot a PDF
+        page first if that's what you have. Each floor renders as a
+        semi-transparent background to trace your room list against.</p>
+        <input type="file" accept="image/*" id="floorPlanUpload" multiple>
+        <div id="floorPlanTabs" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;"></div>
+
+        <button class="primary" id="analyzeFloorPlanBtn" style="margin-top:10px;">Analyze this floor plan</button>
+        <p class="small" style="margin-top:4px;">The simplest path: one tap finds the
+        building's own true center (Brahmasthan) from the drawn outline, whatever shape
+        that outline is — rectangle, L, pentagon, hexagon, a triangle-plus-rectangle
+        combination, a gomukh (narrow-front) plot, or a fully irregular footprint with no
+        name at all. It traces the actual drawn boundary and computes its real area
+        centroid rather than assuming any particular shape, then reads every room
+        label it can (English, Dutch, or Hindi — Devanagari or romanized) and works out that
+        room's direction from the center it just found. Needs internet the first time (to load
+        the text-recognition models) and works fully offline afterward. Always check the marked
+        center against the picture below — it's a real geometric estimate, not a guarantee, and
+        you can override it with one tap if it looks wrong (see below).</p>
+        <p class="small" id="planDetectStatus" style="margin-top:6px;"></p>
+
+        <details style="margin-top:10px;">
+          <summary class="small" style="cursor:pointer; color:var(--text-dim);">Do it in steps instead, or fix a wrong result</summary>
+          <div style="margin-top:8px;">
+            <p class="small">"Read floor plan text" runs real on-device text recognition
+            (OCR) to find room labels already printed on the image — there
+            is no AI that visually detects walls/room shapes, only text it
+            can actually read, and it will miss anything not labeled or
+            illegible in the photo.</p>
+            <div class="row">
+              <button class="ghost" id="detectBrahmaBtn">Auto-detect Brahmasthan only</button>
+              <button class="ghost" id="setBrahmaPointBtn">Set Brahmasthan point manually (tap the plan)</button>
+            </div>
+            <div id="copyFloorCentroidRow" style="display:none; margin-top:8px;">
+              <div class="small" style="margin-bottom:4px;">Multiple floors: if this
+              floor has the <strong>exact same footprint</strong> as another one
+              you've already detected (common for upper floors that don't step
+              back), copy its point instead of re-detecting — but if this floor's
+              outline is actually different (a setback terrace, a smaller top
+              floor, a dormer that changes the shape), leave each floor to its
+              own auto-detect above instead, since they genuinely have different
+              centers.</div>
+              <div id="floorSimilaritySuggestion" style="display:none; margin-bottom:8px;"></div>
+              <select id="copyFloorCentroidSelect" class="full"></select>
+              <button class="ghost" id="copyFloorCentroidBtn" style="margin-top:6px;">Copy this floor's point</button>
+            </div>
+            <button class="ghost" id="runOcrBtn" style="margin-top:8px;">Read floor plan text (OCR) only</button>
+            <div class="row" style="margin-top:8px;">
+              <button class="ghost" id="floorPlanToggleBtn">Show behind plan: Off</button>
+              <button class="ghost" id="floorPlanClearBtn">Remove this floor</button>
+            </div>
+            <p class="small" style="margin-top:6px;">When the photo is shown, the
+            view below is the photo plus its own OCR markers/zone overlay.
+            When it's hidden, the view below switches to the room boxes
+            you type in further down — the two aren't drawn on top of each
+            other any more, since they're two different, unrelated
+            coordinate systems and overlapping them just produced clutter.</p>
+            <p class="small" style="margin-top:8px; margin-bottom:4px;">If the detected directions come out
+            wrong (e.g. the plan wasn't drawn north-up, or was scanned
+            upside down), correct the image's own orientation here — this
+            also re-derives the detected directions to match, not just the
+            picture:</p>
+            <div class="row">
+              <button class="ghost" id="rotateBtn">Rotate 90°</button>
+              <button class="ghost" id="flipHBtn">Flip ↔</button>
+              <button class="ghost" id="flipVBtn">Flip ↕</button>
+            </div>
+
+            <div class="small" style="margin-top:12px; margin-bottom:4px;">Or skip the guesswork — calibrate this photo's north using your phone's real compass:</div>
+            <p class="small" style="margin-bottom:6px;">Hold your phone flat
+            (like the Dial tab) and point the <strong>top edge of the
+            phone</strong> the same way the <strong>top edge of this photo</strong>
+            faces in real life, then tap Calibrate. Every direction this
+            photo produces — OCR, manual taps, the zone overlay — is
+            measured against this from then on, instead of assuming the
+            image was drawn north-up.</p>
+            <button class="ghost" id="calibrateNorthBtn">Calibrate photo's north with compass</button>
+            <button class="ghost" id="clearNorthCalBtn">Clear calibration</button>
+            <p class="small" id="northCalStatus" style="margin-top:4px;"></p>
+          </div>
+        </details>
+
+        <p class="small" id="ocrStatus" style="margin-top:8px;"></p>
+        <div id="ocrRoomsList"></div>
+
+        <div class="small" style="margin-top:12px; margin-bottom:4px;">Or: stand at (or near) this home's Brahmasthan/center and point your phone — no photo needed for this part:</div>
+        <p class="small" style="margin-bottom:6px;">Pick what you're facing, hold the phone flat and point it at that
+        feature, then tap Save. This records the real compass bearing
+        directly — no photo, no tapping a point, no assumption about
+        which way the image was drawn. Use the Lens tab's live camera
+        (with AI object detection) first if you want a second opinion
+        on what a room actually is before you tag it.</p>
+        <select id="standPointTypeSelect" class="full"></select>
+        <button class="primary" id="standPointSaveBtn" style="margin-top:6px;">Save this direction</button>
+        <p class="small" id="standPointStatus" style="margin-top:4px;"></p>
+
+        <div class="small" style="margin-top:12px; margin-bottom:4px;">Draw ideal-zone overlay on the image for:</div>
+        <select id="zoneOverlaySelect" class="full"></select>
+        <div class="small" style="margin:6px 0 4px;">Zones:</div>
+        <div class="segrow" id="overlaySectorSeg">
+          <button data-count="8" class="active">8</button>
+          <button data-count="16">16</button>
+          <button data-count="32">32</button>
+        </div>
+        <button class="ghost" id="zoneOverlayToggleBtn">Show overlay: Off</button>
+        <p class="small" style="margin-top:4px;">The overlay is centered
+        on this floor's detected/set Brahmasthan point above (or the
+        plain image midpoint if you haven't run detection yet) —
+        still not a substitute for the Center tab's real plot-boundary
+        calculation in meters, which remains the more rigorous source
+        if you have it. At 16/32 zones, each fine slice still inherits its
+        compliance from the same 8-direction rule its wedge sits
+        within (e.g. every NE-range sliver reads as NE) — there's no
+        separate 16/32-specific ruleset, just a finer-grained view of
+        the same 8-direction logic used everywhere else in this app.</p>
+      </div>
+
+
+      <div class="card">
+        <h2 style="margin-top:0;">Option B — Look up a Dutch address (real surveyed footprint)</h2>
+        <p>For an address in the Netherlands, this is the most accurate
+        option of all: it pulls your building's <strong>actual surveyed
+        outline</strong> from the Kadaster's BAG (Basisregistratie Adressen
+        en Gebouwen — the Dutch government's official building register),
+        the same registry professional GIS tools like QGIS read from — not
+        a photo trace, not an estimate. It also works out the building's
+        real compass rotation directly from its own walls, for the Shakti
+        Chakra overlay below.</p>
+        <input type="text" id="bagAddressInput" placeholder="e.g. Museumplein 6, Amsterdam">
+        <button class="primary" id="bagLookupBtn">Find my building's real footprint</button>
+        <p class="small" id="bagStatus" style="margin-top:6px;"></p>
+        <div id="bagResult" style="display:none;">
+          <canvas id="bagCanvas" width="500" height="500" style="width:100%; max-width:440px; display:block; margin:10px auto; background:#fff; border-radius:10px;"></canvas>
+          <p class="small" id="bagResultText"></p>
+          <label class="small" style="display:flex; align-items:center; gap:6px; margin-top:6px;">
+            <input type="checkbox" id="bagChakraToggle" checked style="width:auto;"> Overlay the Shakti Chakra
+          </label>
+          <div class="row" style="align-items:center; margin-top:4px;">
+            <input type="range" id="bagChakraAngle" min="0" max="359" value="0" step="1" style="flex:1;">
+            <input type="number" id="bagChakraAngleNum" min="0" max="359" value="0" style="width:70px;">
+          </div>
+          <p class="small" style="margin-top:2px; color:var(--text-dim);">Pre-filled from the building's own detected
+          wall angle above — drag, type, or tap the button below if you'd rather match it to a compass reading instead.</p>
+          <button class="ghost" id="bagChakraFromCompassBtn">Use current Dial-tab compass reading</button>
+          <button class="primary" id="bagSaveBtn" style="margin-top:8px;">Use this as my home's Brahmasthan</button>
+        </div>
+        <p class="small" style="margin-top:8px; color:var(--text-dim);">This calls the Kadaster's free, public BAG WFS
+        service directly over the internet — it needs a connection, no API key, and only works for addresses actually
+        registered in the Netherlands. If your browser blocks the request (some browsers restrict this kind of
+        cross-site government data request more than others), use Option A or C instead, or the desktop build (see the
+        Guide tab), which isn't subject to that browser restriction at all.</p>
       </div>
 
       <div class="card">
-        <h2 style="margin-top:0;">Option B — Enter it yourself</h2>
+        <h2 style="margin-top:0;">Option C — Enter it yourself</h2>
         <p>Most Dutch homes are a simple rectangle — enter the width and
         depth below and you're done. Only open "My plot isn't a simple
         rectangle" for anything else: L-shape, pentagon, hexagon, a
@@ -592,6 +746,23 @@
         <p id="brahmaLatLon" style="display:none;"></p>
         <a id="brahmaMapLink" href="#" target="_blank" style="display:none; font-size:12.5px; color: var(--accent);">Open in Maps</a>
         <p id="brahmaConvexWarning" style="display:none; color:#ff8a8a;"></p>
+
+        <label class="small" style="display:flex; align-items:center; gap:6px; margin-top:10px;">
+          <input type="checkbox" id="brahmaChakraToggle" style="width:auto;"> Overlay the Shakti Chakra on this plot
+        </label>
+        <div id="brahmaChakraControls" style="display:none; margin-top:6px;">
+          <canvas id="brahmaChakraCanvas" width="440" height="440" style="width:100%; max-width:400px; display:block; margin:8px auto; background:#fff; border-radius:10px;"></canvas>
+          <div class="row" style="align-items:center;">
+            <input type="range" id="brahmaChakraAngle" min="0" max="359" value="0" step="1" style="flex:1;">
+            <input type="number" id="brahmaChakraAngleNum" min="0" max="359" value="0" style="width:70px;">
+          </div>
+          <p class="small" style="margin-top:2px; color:var(--text-dim);">Angle = which way true north sits on the
+          wheel, measured clockwise from straight up. Set it to whatever your compass reading, phone calibration, or
+          a BAG lookup gave you for this plot's real orientation — drag the slider or type a number, either updates
+          the drawing live.</p>
+          <button class="ghost" id="brahmaChakraFromCompassBtn" style="margin-top:6px;">Use current Dial-tab compass reading</button>
+        </div>
+
         <input type="text" id="homeLabelInput" placeholder="Label this home (e.g. 'My House', an address)" style="margin-top:8px;">
         <button class="primary" id="saveHomeBtn">Save as my home's Brahmasthan</button>
       </div>
@@ -763,124 +934,6 @@
         <textarea id="listingPasteText" rows="4" style="width:100%; background:rgba(26,26,46,0.05); border:1px solid var(--glass-border); border-radius:10px; padding:9px; font-size:13px; font-family:inherit;" placeholder="Paste the listing description here (Dutch or English)..."></textarea>
         <button class="ghost" id="parseListingBtn" style="margin-top:8px;">Find orientation mentions</button>
         <p class="small" id="listingParseResult" style="margin-top:6px;"></p>
-      </div>
-
-      <div class="card">
-        <h2>Floor plans (multiple floors supported)</h2>
-        <p>Upload one image per floor (ground floor, first floor, etc.)
-        — plain photos/screenshots only, not PDFs; screenshot a PDF
-        page first if that's what you have. Each floor renders as a
-        semi-transparent background to trace your room list against.</p>
-        <input type="file" accept="image/*" id="floorPlanUpload" multiple>
-        <div id="floorPlanTabs" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;"></div>
-
-        <button class="primary" id="analyzeFloorPlanBtn" style="margin-top:10px;">Analyze this floor plan</button>
-        <p class="small" style="margin-top:4px;">The simplest path: one tap finds the
-        building's own true center (Brahmasthan) from the drawn outline, whatever shape
-        that outline is — rectangle, L, pentagon, hexagon, a triangle-plus-rectangle
-        combination, a gomukh (narrow-front) plot, or a fully irregular footprint with no
-        name at all. It traces the actual drawn boundary and computes its real area
-        centroid rather than assuming any particular shape, then reads every room
-        label it can (English, Dutch, or Hindi — Devanagari or romanized) and works out that
-        room's direction from the center it just found. Needs internet the first time (to load
-        the text-recognition models) and works fully offline afterward. Always check the marked
-        center against the picture below — it's a real geometric estimate, not a guarantee, and
-        you can override it with one tap if it looks wrong (see below).</p>
-        <p class="small" id="planDetectStatus" style="margin-top:6px;"></p>
-
-        <details style="margin-top:10px;">
-          <summary class="small" style="cursor:pointer; color:var(--text-dim);">Do it in steps instead, or fix a wrong result</summary>
-          <div style="margin-top:8px;">
-            <p class="small">"Read floor plan text" runs real on-device text recognition
-            (OCR) to find room labels already printed on the image — there
-            is no AI that visually detects walls/room shapes, only text it
-            can actually read, and it will miss anything not labeled or
-            illegible in the photo.</p>
-            <div class="row">
-              <button class="ghost" id="detectBrahmaBtn">Auto-detect Brahmasthan only</button>
-              <button class="ghost" id="setBrahmaPointBtn">Set Brahmasthan point manually (tap the plan)</button>
-            </div>
-            <div id="copyFloorCentroidRow" style="display:none; margin-top:8px;">
-              <div class="small" style="margin-bottom:4px;">Multiple floors: if this
-              floor has the <strong>exact same footprint</strong> as another one
-              you've already detected (common for upper floors that don't step
-              back), copy its point instead of re-detecting — but if this floor's
-              outline is actually different (a setback terrace, a smaller top
-              floor, a dormer that changes the shape), leave each floor to its
-              own auto-detect above instead, since they genuinely have different
-              centers.</div>
-              <select id="copyFloorCentroidSelect" class="full"></select>
-              <button class="ghost" id="copyFloorCentroidBtn" style="margin-top:6px;">Copy this floor's point</button>
-            </div>
-            <button class="ghost" id="runOcrBtn" style="margin-top:8px;">Read floor plan text (OCR) only</button>
-            <div class="row" style="margin-top:8px;">
-              <button class="ghost" id="floorPlanToggleBtn">Show behind plan: Off</button>
-              <button class="ghost" id="floorPlanClearBtn">Remove this floor</button>
-            </div>
-            <p class="small" style="margin-top:6px;">When the photo is shown, the
-            view below is the photo plus its own OCR markers/zone overlay.
-            When it's hidden, the view below switches to the room boxes
-            you type in further down — the two aren't drawn on top of each
-            other any more, since they're two different, unrelated
-            coordinate systems and overlapping them just produced clutter.</p>
-            <p class="small" style="margin-top:8px; margin-bottom:4px;">If the detected directions come out
-            wrong (e.g. the plan wasn't drawn north-up, or was scanned
-            upside down), correct the image's own orientation here — this
-            also re-derives the detected directions to match, not just the
-            picture:</p>
-            <div class="row">
-              <button class="ghost" id="rotateBtn">Rotate 90°</button>
-              <button class="ghost" id="flipHBtn">Flip ↔</button>
-              <button class="ghost" id="flipVBtn">Flip ↕</button>
-            </div>
-
-            <div class="small" style="margin-top:12px; margin-bottom:4px;">Or skip the guesswork — calibrate this photo's north using your phone's real compass:</div>
-            <p class="small" style="margin-bottom:6px;">Hold your phone flat
-            (like the Dial tab) and point the <strong>top edge of the
-            phone</strong> the same way the <strong>top edge of this photo</strong>
-            faces in real life, then tap Calibrate. Every direction this
-            photo produces — OCR, manual taps, the zone overlay — is
-            measured against this from then on, instead of assuming the
-            image was drawn north-up.</p>
-            <button class="ghost" id="calibrateNorthBtn">Calibrate photo's north with compass</button>
-            <button class="ghost" id="clearNorthCalBtn">Clear calibration</button>
-            <p class="small" id="northCalStatus" style="margin-top:4px;"></p>
-          </div>
-        </details>
-
-        <p class="small" id="ocrStatus" style="margin-top:8px;"></p>
-        <div id="ocrRoomsList"></div>
-
-        <div class="small" style="margin-top:12px; margin-bottom:4px;">Or: stand at (or near) this home's Brahmasthan/center and point your phone — no photo needed for this part:</div>
-        <p class="small" style="margin-bottom:6px;">Pick what you're facing, hold the phone flat and point it at that
-        feature, then tap Save. This records the real compass bearing
-        directly — no photo, no tapping a point, no assumption about
-        which way the image was drawn. Use the Lens tab's live camera
-        (with AI object detection) first if you want a second opinion
-        on what a room actually is before you tag it.</p>
-        <select id="standPointTypeSelect" class="full"></select>
-        <button class="primary" id="standPointSaveBtn" style="margin-top:6px;">Save this direction</button>
-        <p class="small" id="standPointStatus" style="margin-top:4px;"></p>
-
-        <div class="small" style="margin-top:12px; margin-bottom:4px;">Draw ideal-zone overlay on the image for:</div>
-        <select id="zoneOverlaySelect" class="full"></select>
-        <div class="small" style="margin:6px 0 4px;">Zones:</div>
-        <div class="segrow" id="overlaySectorSeg">
-          <button data-count="8" class="active">8</button>
-          <button data-count="16">16</button>
-          <button data-count="32">32</button>
-        </div>
-        <button class="ghost" id="zoneOverlayToggleBtn">Show overlay: Off</button>
-        <p class="small" style="margin-top:4px;">The overlay is centered
-        on this floor's detected/set Brahmasthan point above (or the
-        plain image midpoint if you haven't run detection yet) —
-        still not a substitute for the Center tab's real plot-boundary
-        calculation in meters, which remains the more rigorous source
-        if you have it. At 16/32 zones, each fine slice still inherits its
-        compliance from the same 8-direction rule its wedge sits
-        within (e.g. every NE-range sliver reads as NE) — there's no
-        separate 16/32-specific ruleset, just a finer-grained view of
-        the same 8-direction logic used everywhere else in this app.</p>
       </div>
 
       <div class="card">
@@ -1094,6 +1147,60 @@
       </div>
 
       <div class="card">
+        <h2>How the automatic photo detection actually works (and what it isn't)</h2>
+        <p>The Centroid tab's "Analyze this floor plan" doesn't run QGIS, GDAL,
+        or any GIS desktop software — those are installed programs built for
+        georeferenced satellite/survey data, not something a static web page
+        can embed or call into. What it <em>does</em> run, entirely on your
+        device, is the same underlying algorithm those tools use for this
+        exact kind of problem, implemented directly in this app:</p>
+        <ol style="margin:8px 0 0 18px; padding:0; font-size:13px; color:var(--text-dim); line-height:1.7;">
+          <li><strong>Connected-component flood fill</strong> — the same
+          first step GDAL's own raster-to-vector <code>polygonize</code>
+          tool uses — separates the drawing's ink from the page background,
+          working from the image's own edges inward.</li>
+          <li><strong>Moore-Neighbor boundary tracing</strong> — the
+          standard contour-following algorithm (walk the mask's edge, one
+          boundary pixel at a time, using 8-connectivity, until back at the
+          start) — turns that pixel mask into an actual traced vector
+          outline, the same technique <code>gdal_polygonize</code> and QGIS's
+          own raster tools use to turn a raster region into a polygon. The
+          traced outline is drawn as a dashed green line on the plan photo,
+          specifically so you can see what boundary the algorithm actually
+          found rather than trust an unexplained dot.</li>
+          <li><strong>Shoelace/area-moment formula</strong> — the exact same
+          formula GEOS (the geometry engine behind QGIS's own "Centroids"
+          tool and PostGIS's <code>ST_Centroid</code>) uses for its polygon
+          centroid — is run on that traced outline as an independent
+          cross-check against the raw pixel-average centroid. When the two
+          agree closely, that agreement is reported as a real confidence
+          signal, not just a plausible-looking coverage percentage.</li>
+          <li><strong>Point-on-surface fallback</strong> — for a non-convex
+          outline (an L, U, C, or similar shape) whose true geometric center
+          can legitimately fall outside the building itself — normal
+          geometry, not a bug — this finds a guaranteed-inside point instead,
+          the same idea behind GEOS/PostGIS's own <code>ST_PointOnSurface</code>:
+          scan a line through the centroid and take the midpoint of the
+          widest interior span.</li>
+        </ol>
+        <p style="margin-top:8px;">This works for a plot of <strong>any
+        shape</strong> — the algorithm has no concept of "L-shaped" or
+        "rectangle" to special-case in the first place, it just traces
+        whatever boundary is actually drawn. What it genuinely can't do:
+        assign real-world scale (meters) to an ungeoreferenced photo without
+        you providing one known measurement, or see through a floor plan
+        whose walls have gaps wide enough to make the traced boundary
+        unreliable (handled by falling back to the ink-bounding-box method
+        and saying so, rather than silently trusting a broken trace) — see
+        the two method notes above. If you have an actual GIS-georeferenced
+        file (a shapefile, GeoJSON, or GeoTIFF with real-world coordinates)
+        rather than a plain photo, this app can't open that format directly;
+        QGIS itself remains the right tool for that file, and you could
+        export its centroid from QGIS's own Vector → Geometry Tools →
+        Centroids and enter that point here via Custom or Walls entry.</p>
+      </div>
+
+      <div class="card">
         <h2>Brahmasthan scope: plot vs. garden vs. individual rooms, and multi-floor plots</h2>
         <p>Three practical questions this app gets asked often enough to answer directly:</p>
         <ul style="margin:8px 0 0 18px; padding:0; font-size:13px; color:var(--text-dim); line-height:1.6;">
@@ -1109,14 +1216,14 @@
           in the room's own SW corner, for example) — it never overrides the zone the room
           itself sits in relative to the whole-house Brahmasthan.</li>
           <li><strong>Multi-floor houses:</strong> if every floor shares the same outer
-          footprint, one Brahmasthan calculation projects straight up through all of them —
-          this is the same point covered in the multi-floor card above. If an upper floor has
-          a different footprint (a setback terrace, a missing extension, a dormer), calculate
-          a separate Brahmasthan for that floor's own outline using Custom or Walls entry.
-          Traditionally, a toilet on an upper floor is flagged if it sits directly above a
-          ground-floor kitchen stove, pooja altar, or bed headboard — worth checking floor
-          plans against each other specifically for that, independent of each floor's own
-          zone analysis.</li>
+          footprint, copy the Brahmasthan point across on the Centroid tab (see "Copy this
+          floor's point" there) instead of re-detecting — same point, no repeated work. If an
+          upper floor has a different footprint (a setback terrace, a missing extension, a
+          dormer), let each floor auto-detect independently instead — they genuinely have
+          different centers, and copying across would be wrong for that floor. Traditionally, a
+          toilet on an upper floor is flagged if it sits directly above a ground-floor kitchen
+          stove, pooja altar, or bed headboard — worth checking floor plans against each other
+          specifically for that, independent of each floor's own zone analysis.</li>
         </ul>
       </div>
 
@@ -2289,7 +2396,7 @@ function setStack(showId, hideId){
 /**
  * The compass render loop is only useful while the Dial or Lens screen
  * is actually on screen — running it in the background (e.g. while the
- * user is on the Design tab doing OCR) was pure wasted main-thread work:
+ * user is on the Centroid tab doing OCR) was pure wasted main-thread work:
  * a dozen+ DOM writes and a canvas redraw, 60 times a second, forever,
  * competing with whatever else the page is doing. This is the main
  * fix for the app feeling like it "hangs" during heavier tasks.
@@ -2579,6 +2686,64 @@ function polygonCentroid(verts){
   return { x: cx/(3*a2), y: cy/(3*a2), area: Math.abs(a2/2) };
 }
 
+/**
+ * Standard segment-intersection test (orientation + on-segment
+ * checks) — the building block for isSimplePolygon below. Two
+ * segments that only touch at a shared endpoint (the normal case for
+ * consecutive polygon edges) are NOT reported as intersecting;
+ * isSimplePolygon only ever calls this on non-adjacent edge pairs, so
+ * that distinction is exactly what's needed and no more.
+ */
+function segmentsIntersect(p1, p2, p3, p4){
+  function orientation(a, b, c){
+    const v = (b[1]-a[1])*(c[0]-b[0]) - (b[0]-a[0])*(c[1]-b[1]);
+    if (Math.abs(v) < 1e-9) return 0;
+    return v > 0 ? 1 : 2;
+  }
+  function onSegment(a, b, c){
+    return Math.min(a[0],c[0]) - 1e-9 <= b[0] && b[0] <= Math.max(a[0],c[0]) + 1e-9 &&
+      Math.min(a[1],c[1]) - 1e-9 <= b[1] && b[1] <= Math.max(a[1],c[1]) + 1e-9;
+  }
+  const o1 = orientation(p1,p2,p3), o2 = orientation(p1,p2,p4);
+  const o3 = orientation(p3,p4,p1), o4 = orientation(p3,p4,p2);
+  if (o1 !== o2 && o3 !== o4) return true;
+  if (o1 === 0 && onSegment(p1,p3,p2)) return true;
+  if (o2 === 0 && onSegment(p1,p4,p2)) return true;
+  if (o3 === 0 && onSegment(p3,p1,p4)) return true;
+  if (o4 === 0 && onSegment(p3,p2,p4)) return true;
+  return false;
+}
+
+/**
+ * Rejects a self-intersecting ("bowtie"/crossed) polygon before it
+ * ever reaches polygonCentroid — the same validity gate GEOS applies
+ * (a self-intersecting ring fails geos::isValid) before QGIS will
+ * compute a centroid on it at all. Without this, a mis-ordered Custom
+ * or Walls entry (corners entered out of sequence, or a wall turned
+ * the wrong way) silently produces a mathematically well-defined but
+ * practically meaningless centroid/area — the shoelace formula
+ * doesn't error on a crossed polygon, it just quietly computes
+ * something that no longer describes the plot the person meant to
+ * enter. Checks every pair of non-adjacent edges; O(n²), which is
+ * irrelevant at the vertex counts a hand-entered plot ever reaches.
+ */
+function isSimplePolygon(verts){
+  const n = verts.length;
+  if (n < 3) return true;
+  for (let i = 0; i < n; i++) {
+    const a1 = verts[i], a2 = verts[(i+1) % n];
+    for (let j = i+1; j < n; j++) {
+      if (j === i) continue;
+      // Skip edges that share an endpoint with edge i (adjacent edges,
+      // including the wrap-around pair) — those are SUPPOSED to touch.
+      if (j === i+1 || (i === 0 && j === n-1)) continue;
+      const b1 = verts[j], b2 = verts[(j+1) % n];
+      if (segmentsIntersect(a1, a2, b1, b2)) return false;
+    }
+  }
+  return true;
+}
+
 function isConvex(verts){
   if (verts.length < 4) return true;
   let sign = 0;
@@ -2592,6 +2757,132 @@ function isConvex(verts){
     if (sign === 0) sign = s; else if (sign !== s) return false;
   }
   return true;
+}
+
+/**
+ * Andrew's monotone-chain convex hull — a standard, well-known
+ * algorithm, used here (not for the Brahmasthan centroid itself, which
+ * doesn't need it) purely to feed the minimum-area bounding rectangle
+ * below: that only needs to test hull edges, not every edge of a
+ * potentially concave real building outline.
+ */
+function convexHull(points){
+  const pts = points.slice().sort((a, b) => a[0]-b[0] || a[1]-b[1]);
+  if (pts.length <= 2) return pts;
+  function cross(o, a, b){ return (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]); }
+  const lower = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper = [];
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i];
+    while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  lower.pop(); upper.pop();
+  return lower.concat(upper);
+}
+
+/**
+ * Rotating-calipers minimum-area bounding rectangle over a convex
+ * hull — the standard, general way to find a shape's own dominant
+ * axis regardless of what angle it happens to be drawn/surveyed at:
+ * for each hull edge in turn, treat its direction as a candidate axis,
+ * project every hull point onto that axis and its perpendicular, and
+ * keep whichever candidate axis produces the smallest bounding area.
+ * This works for ANY convex hull — a rectangle, an L's outer hull, a
+ * gomukh trapezoid, a pentagon — with no shape-specific tuning, the
+ * same way it works in any GIS package's own "oriented minimum
+ * bounding box" tool.
+ */
+function minimumAreaRectangle(hull){
+  if (hull.length < 3) return null;
+  let best = null;
+  for (let i = 0; i < hull.length; i++) {
+    const p1 = hull[i], p2 = hull[(i+1) % hull.length];
+    const edgeAngle = Math.atan2(p2[1]-p1[1], p2[0]-p1[0]);
+    const cos = Math.cos(-edgeAngle), sin = Math.sin(-edgeAngle);
+    let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+    for (const [x, y] of hull) {
+      const u = x*cos - y*sin, v = x*sin + y*cos;
+      if (u < minU) minU = u; if (u > maxU) maxU = u;
+      if (v < minV) minV = v; if (v > maxV) maxV = v;
+    }
+    const w = maxU - minU, h = maxV - minV, area = w*h;
+    if (!best || area < best.area) best = { area, width: w, height: h, angleRad: edgeAngle };
+  }
+  return best;
+}
+
+/**
+ * Turns the min-area rectangle's own axis into a real compass bearing
+ * (0-360°, clockwise from true north) for "which way does this
+ * building actually face/align" — the input polygon must already be
+ * in local east/north meters (see equirectangularProject), so the
+ * math-angle-to-compass-bearing conversion below is the standard
+ * fixed relationship between the two conventions, not a guess.
+ * Reports the axis mod 90° first (a rectangle's long and short axis
+ * are 90° apart, and geometry alone can't say which literal wall is
+ * the "front") plus both concrete 90°-apart candidate bearings so the
+ * person can pick whichever matches their actual front door/street.
+ */
+function dominantBuildingBearing(pointsEastNorth){
+  const hull = convexHull(pointsEastNorth);
+  const mbr = minimumAreaRectangle(hull);
+  if (!mbr) return null;
+  const mathAngleDeg = mbr.angleRad * 180 / Math.PI;
+  // Standard conversion: compass bearing (clockwise from north) = 90 - (math angle, counterclockwise from east)
+  let bearing = normalize(90 - mathAngleDeg);
+  const candidateA = bearing % 90 < 0 ? (bearing % 90) + 90 : bearing % 90;
+  return {
+    axisMod90: candidateA,
+    candidateBearings: [candidateA, normalize(candidateA + 90), normalize(candidateA + 180), normalize(candidateA + 270)],
+    rect: mbr
+  };
+}
+
+/**
+ * A scale-invariant "shape fingerprint" for a traced floor-plan
+ * outline — aspect ratio and compactness (how much of its own
+ * minimum-area bounding rectangle the shape actually fills; 1.0 for a
+ * perfect rectangle, noticeably less for an L, gomukh, or other
+ * re-entrant outline). Both ratios stay the same regardless of the
+ * photo's own resolution or zoom level, which raw pixel area/size
+ * never would — two floors photographed at completely different
+ * resolutions but showing the same real footprint should still
+ * fingerprint as near-identical, and that's exactly the comparison
+ * multi-floor same-footprint detection below needs.
+ */
+function outlineShapeSignature(outlinePolygon){
+  if (!outlinePolygon || outlinePolygon.length < 3) return null;
+  const c = polygonCentroid(outlinePolygon);
+  const hull = convexHull(outlinePolygon);
+  const mbr = minimumAreaRectangle(hull);
+  if (!c || !mbr || mbr.area <= 0) return null;
+  const aspect = Math.max(mbr.width, mbr.height) / Math.max(1e-9, Math.min(mbr.width, mbr.height));
+  const compactness = c.area / mbr.area;
+  return { aspect, compactness };
+}
+
+/**
+ * Turns two shape fingerprints into a single 0-1 similarity score
+ * (1 = identical fingerprint, 0 = very different) — a simple weighted
+ * distance over the two ratios above, not a rigorous shape-matching
+ * algorithm (a true one would need actual point-cloud alignment,
+ * e.g. Procrustes analysis or IoU after registration) but a
+ * legitimate, cheap first-pass signal for "these two floors are
+ * probably tracing the same real footprint" vs. "these look like
+ * genuinely different shapes" — treated here only as a suggestion to
+ * confirm, never as an automatic silent decision.
+ */
+function shapeSimilarityScore(sigA, sigB){
+  if (!sigA || !sigB) return 0;
+  const aspectDiff = Math.abs(sigA.aspect - sigB.aspect) / Math.max(sigA.aspect, sigB.aspect, 1e-9);
+  const compactDiff = Math.abs(sigA.compactness - sigB.compactness);
+  const distance = aspectDiff*0.6 + compactDiff*0.4;
+  return Math.max(0, 1 - distance);
 }
 
 // Small-area equirectangular approximation — accurate to well within
@@ -2672,6 +2963,236 @@ document.getElementById("pdokSaveBtn").addEventListener("click", () => {
   if (!lastPdokResult) return;
   updateHomeProfile({ verifiedAddress: lastPdokResult, label: lastPdokResult.label });
   document.getElementById("pdokStatus").textContent = "Saved to your home profile.";
+  renderSavedHomeCard();
+});
+
+/* ---------- BAG real building footprint lookup (Kadaster, free, official) ---------- */
+let lastBagResult = null;
+
+/**
+ * Fetches the real, surveyed building outline for a Dutch address from
+ * the Kadaster's BAG WFS — the same official registry QGIS itself
+ * reads BAG data from. Two steps: geocode the address via PDOK's
+ * Locatieserver (already used above) to get a point, then ask the BAG
+ * WFS for whichever "pand" (building) polygon contains that point.
+ *
+ * The bbox filter's axis order for EPSG:4326 is a genuine, well-known
+ * OGC/WFS ambiguity (some servers expect lon,lat; the formal URN
+ * convention is lat,lon) that can't be resolved without a live test
+ * against this exact server — so this tries the lat,lon order first
+ * and falls back to lon,lat if that comes back empty, rather than
+ * gambling on one and silently failing on the other.
+ */
+async function fetchBagFootprint(lat, lon){
+  const delta = 0.0006; // roughly ±60m — plenty for one building, tight enough to avoid pulling in neighbors
+  const base = "https://service.pdok.nl/lv/bag/wfs/v2_0?service=WFS&version=2.0.0&request=GetFeature&typeName=bag:pand&outputFormat=json&srsName=urn:ogc:def:crs:EPSG::4326&count=5&bbox=";
+  const bboxLatLonOrder = (lat-delta) + "," + (lon-delta) + "," + (lat+delta) + "," + (lon+delta) + ",urn:ogc:def:crs:EPSG::4326";
+  const bboxLonLatOrder = (lon-delta) + "," + (lat-delta) + "," + (lon+delta) + "," + (lat+delta) + ",urn:ogc:def:crs:EPSG::4326";
+
+  async function tryFetch(bboxParam){
+    const resp = await fetch(base + bboxParam);
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const geojson = await resp.json();
+    return (geojson && geojson.features) || [];
+  }
+
+  let features = await tryFetch(bboxLatLonOrder);
+  if (features.length === 0) features = await tryFetch(bboxLonLatOrder);
+  if (features.length === 0) return null;
+
+  // If more than one building fell in the small search box (adjacent
+  // rowhouses are only meters apart), pick whichever polygon actually
+  // contains the address point — never just take the first result.
+  function ringToLocalMeters(ring){
+    return equirectangularProject(ring.map(c => ({ lon: c[0], lat: c[1] })));
+  }
+  let chosen = null;
+  for (const f of features) {
+    if (!f.geometry) continue;
+    const rings = f.geometry.type === "Polygon" ? [f.geometry.coordinates[0]] :
+      (f.geometry.type === "MultiPolygon" ? f.geometry.coordinates.map(p => p[0]) : []);
+    for (const ring of rings) {
+      const localRing = ringToLocalMeters(ring);
+      // equirectangularProject uses the ring's own first point as its
+      // origin — re-derive the address point's offset from that same
+      // origin so pointInPolygon compares apples to apples.
+      const origin = { lat: ring[0][1], lon: ring[0][0] };
+      const addrLocal = equirectangularProject([origin, { lat, lon }])[1];
+      if (pointInPolygon(addrLocal, localRing)) { chosen = { ring: localRing, origin: origin, feature: f }; break; }
+    }
+    if (chosen) break;
+  }
+  if (!chosen) {
+    // Fall back to the first returned polygon rather than nothing —
+    // still the right building far more often than not for a tight
+    // bbox, just not confirmed by the contains-check above.
+    const f = features[0];
+    const ring = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates[0][0];
+    chosen = { ring: ringToLocalMeters(ring), origin: { lat: ring[0][1], lon: ring[0][0] }, feature: f, unconfirmed: true };
+  }
+  return chosen;
+}
+
+document.getElementById("bagLookupBtn").addEventListener("click", async () => {
+  const query = document.getElementById("bagAddressInput").value.trim();
+  const statusEl = document.getElementById("bagStatus");
+  const resultEl = document.getElementById("bagResult");
+  resultEl.style.display = "none";
+  lastBagResult = null;
+  if (!query) { statusEl.textContent = "Enter an address first."; return; }
+  statusEl.textContent = "Looking up the address…";
+
+  try {
+    const geoUrl = "https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?" +
+      "q=" + encodeURIComponent(query) + "&fq=type:adres&fl=weergavenaam,centroide_ll&rows=1&wt=json";
+    const geoResp = await fetch(geoUrl);
+    if (!geoResp.ok) throw new Error("HTTP " + geoResp.status);
+    const geoData = await geoResp.json();
+    const doc = geoData && geoData.response && geoData.response.docs && geoData.response.docs[0];
+    if (!doc) { statusEl.textContent = "No match found for that address."; return; }
+    const point = parseWktPoint(doc.centroide_ll);
+    if (!point) { statusEl.textContent = "Found the address but couldn't read its coordinate."; return; }
+
+    statusEl.textContent = "Address found — fetching the real building outline from the Kadaster (BAG)…";
+    const bag = await fetchBagFootprint(point.lat, point.lon);
+    if (!bag) {
+      statusEl.textContent = "PDOK/BAG didn't return a building at this address — it may be outside " +
+        "the Netherlands, a very new build not yet registered, or the request was blocked. Use Option A or C instead.";
+      return;
+    }
+
+    const c = polygonCentroid(bag.ring);
+    if (!c) { statusEl.textContent = "That building's outline didn't enclose any area — try Option A or C instead."; return; }
+    const azimuth = dominantBuildingBearing(bag.ring);
+    const centroidLatLon = unprojectPoint(bag.origin.lat, bag.origin.lon, c.x, c.y);
+    lastBagResult = {
+      label: doc.weergavenaam,
+      ring: bag.ring,
+      centroid: c,
+      convex: isConvex(bag.ring),
+      azimuth: azimuth,
+      latlon: centroidLatLon,
+      unconfirmed: !!bag.unconfirmed
+    };
+    statusEl.textContent = doc.weergavenaam + " — real BAG footprint, " + c.area.toFixed(1) + " m²" +
+      (bag.unconfirmed ? " (nearest match — couldn't fully confirm this is the exact building at that point, check the outline below)" : "") +
+      (azimuth ? ". Building's own wall angle: " + azimuth.axisMod90.toFixed(1) + "° off true north (and the 90°/180°/270° equivalents)." : "");
+    document.getElementById("bagResultText").textContent = statusEl.textContent;
+    resultEl.style.display = "block";
+    const prefillAngle = azimuth ? Math.round(azimuth.axisMod90) : 0;
+    document.getElementById("bagChakraAngle").value = prefillAngle;
+    document.getElementById("bagChakraAngleNum").value = prefillAngle;
+    drawBagResult();
+  } catch (e) {
+    statusEl.textContent = "Could not reach the Kadaster/PDOK service right now — needs an internet connection, " +
+      "and some browsers restrict this kind of cross-site government data request more than others. " +
+      "Use Option A or C instead, or try the desktop build.";
+  }
+});
+
+/**
+ * Shared renderer for "a plot outline + its centroid + an optional
+ * rotated Shakti Chakra" — used by both the BAG result canvas and the
+ * general Brahmasthan result canvas (Rectangle/Custom/Walls/GPS),
+ * since they're the exact same drawing with a different polygon and
+ * a different source for the rotation angle. `ring` must be a closed
+ * or unclosed simple polygon in local x/y meters (east/whatever,
+ * north/whatever — any consistent local frame; screen orientation is
+ * cosmetic here, not used for any calculation).
+ */
+function drawPolygonWithChakra(canvasEl, ring, centroid, angleDeg, showChakra){
+  const ctx = canvasEl.getContext("2d");
+  const W = canvasEl.width, H = canvasEl.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!ring || ring.length < 3) return;
+
+  const xs = ring.map(p => p[0]), ys = ring.map(p => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const pad = 40;
+  const scale = Math.min((W-2*pad) / (maxX-minX || 1), (H-2*pad) / (maxY-minY || 1));
+  const cx = W/2, cy = H/2;
+  const midX = (minX+maxX)/2, midY = (minY+maxY)/2;
+  // Screen y grows downward while our local frame's y grows north — flip
+  // the y term so the drawing reads with north at the top, matching how
+  // every other plan/map view in this app is oriented.
+  const toScreen = (p) => [cx + (p[0]-midX)*scale, cy - (p[1]-midY)*scale];
+
+  if (showChakra) {
+    const radius = Math.max(...ring.map(p => Math.hypot(p[0]-midX, p[1]-midY))) * scale + 30;
+    drawShaktiChakra(ctx, cx, cy, Math.min(radius, Math.min(W,H)/2 - 6), angleDeg || 0);
+  }
+
+  ctx.beginPath();
+  ring.forEach((p, i) => { const [sx, sy] = toScreen(p); if (i===0) ctx.moveTo(sx,sy); else ctx.lineTo(sx,sy); });
+  ctx.closePath();
+  ctx.fillStyle = "rgba(60,120,220,0.18)";
+  ctx.fill();
+  ctx.strokeStyle = "#1a1a2e";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  if (centroid) {
+    const [ccx, ccy] = toScreen([centroid.x, centroid.y]);
+    ctx.beginPath();
+    ctx.moveTo(ccx-10, ccy); ctx.lineTo(ccx+10, ccy);
+    ctx.moveTo(ccx, ccy-10); ctx.lineTo(ccx, ccy+10);
+    ctx.strokeStyle = "#e64545"; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(ccx, ccy, 5, 0, 2*Math.PI); ctx.strokeStyle = "#e64545"; ctx.stroke();
+  }
+}
+
+/**
+ * Keeps a slider and its paired numeric input in sync (either one can
+ * drive the other) and re-runs `onChange` after every update — the
+ * common pattern behind both the BAG and the general Brahmasthan
+ * chakra-angle controls, written once rather than twice.
+ */
+function wireAngleSliderPair(sliderId, numId, onChange){
+  const slider = document.getElementById(sliderId), num = document.getElementById(numId);
+  slider.addEventListener("input", () => { num.value = slider.value; onChange(parseFloat(slider.value)); });
+  num.addEventListener("input", () => {
+    let v = parseFloat(num.value);
+    if (isNaN(v)) return;
+    v = ((v % 360) + 360) % 360;
+    slider.value = v;
+    onChange(v);
+  });
+}
+
+function drawBagResult(){
+  if (!lastBagResult) return;
+  const showChakra = document.getElementById("bagChakraToggle").checked;
+  const angle = parseFloat(document.getElementById("bagChakraAngleNum").value) || 0;
+  drawPolygonWithChakra(document.getElementById("bagCanvas"), lastBagResult.ring, lastBagResult.centroid, angle, showChakra);
+}
+
+document.getElementById("bagChakraToggle").addEventListener("change", drawBagResult);
+wireAngleSliderPair("bagChakraAngle", "bagChakraAngleNum", drawBagResult);
+document.getElementById("bagChakraFromCompassBtn").addEventListener("click", () => {
+  if (!canAnalyze()) {
+    document.getElementById("bagStatus").textContent = "Compass isn't stable right now — hold the phone flat and steady, then try again.";
+    return;
+  }
+  const heading = Math.round(currentHeading());
+  document.getElementById("bagChakraAngle").value = heading;
+  document.getElementById("bagChakraAngleNum").value = heading;
+  drawBagResult();
+});
+
+document.getElementById("bagSaveBtn").addEventListener("click", () => {
+  if (!lastBagResult) return;
+  showBrahmaResult({
+    x: lastBagResult.centroid.x, y: lastBagResult.centroid.y,
+    area: lastBagResult.centroid.area, convex: lastBagResult.convex,
+    latlon: lastBagResult.latlon
+  });
+  updateHomeProfile({
+    brahmasthan: { x: lastBagResult.centroid.x, y: lastBagResult.centroid.y, area: lastBagResult.centroid.area },
+    label: lastBagResult.label,
+    source: "BAG (real surveyed footprint)",
+    buildingAzimuthDeg: lastBagResult.azimuth ? lastBagResult.azimuth.axisMod90 : null
+  });
+  document.getElementById("bagStatus").textContent = "Saved as your home's Brahmasthan — this now drives the Matrix tab's walkthrough too.";
   renderSavedHomeCard();
 });
 
@@ -2997,6 +3518,7 @@ document.getElementById("saveFeedbackNoteBtn").addEventListener("click", () => {
 renderFeedbackNotes();
 
 let lastBrahmaResult = null;
+let lastBrahmaPolygon = null; // the actual vertex list behind whichever result is showing — feeds the Shakti Chakra overlay below, which needs a real shape to draw, not just a bare point
 
 function showBrahmaResult(result){
   lastBrahmaResult = result;
@@ -3042,7 +3564,42 @@ function showBrahmaResult(result){
     warnEl.style.display = "none";
   }
   document.getElementById("brahmaResult").style.display = "block";
+  drawGenericChakraResult();
 }
+
+/**
+ * Draws the general (non-BAG) Brahmasthan result's own Shakti Chakra
+ * card — same shared renderer as the BAG one, but working from
+ * whatever polygon the Rectangle/Custom/Walls/GPS path just computed
+ * (lastBrahmaPolygon) and the manual angle input here, since this
+ * path has no BAG-derived azimuth to default to.
+ */
+function drawGenericChakraResult(){
+  const canvas = document.getElementById("brahmaChakraCanvas");
+  if (!canvas || !lastBrahmaResult || !lastBrahmaPolygon) return;
+  const showChakra = document.getElementById("brahmaChakraToggle").checked;
+  const angle = parseFloat(document.getElementById("brahmaChakraAngleNum").value) || 0;
+  drawPolygonWithChakra(canvas, lastBrahmaPolygon, { x: lastBrahmaResult.x, y: lastBrahmaResult.y }, angle, showChakra);
+}
+
+document.getElementById("brahmaChakraToggle").addEventListener("change", () => {
+  document.getElementById("brahmaChakraControls").style.display =
+    document.getElementById("brahmaChakraToggle").checked ? "block" : "none";
+  drawGenericChakraResult();
+});
+wireAngleSliderPair("brahmaChakraAngle", "brahmaChakraAngleNum", drawGenericChakraResult);
+document.getElementById("brahmaChakraFromCompassBtn").addEventListener("click", () => {
+  if (!canAnalyze()) {
+    document.getElementById("brahmaConvexWarning").style.display = "block";
+    document.getElementById("brahmaConvexWarning").textContent =
+      "Compass isn't stable right now — hold the phone flat and steady, then try again.";
+    return;
+  }
+  const heading = Math.round(currentHeading());
+  document.getElementById("brahmaChakraAngle").value = heading;
+  document.getElementById("brahmaChakraAngleNum").value = heading;
+  drawGenericChakraResult();
+});
 
 /* ==================================================================
    Vastu Purusha Mandala diagram (Center tab). A square "picture
@@ -3164,17 +3721,15 @@ document.getElementById("mandalaCanvas").addEventListener("click", (e) => {
 window.addEventListener("resize", () => drawMandala());
 
 /**
- * The Center tab's two "bridge" buttons — switching tabs directly
- * rather than just telling the person to do it themselves, since
- * that hand-off between tabs (get your center here, then go check
- * rooms there) was exactly the kind of disconnect that made the app
- * feel like several unrelated tools rather than one flow.
+ * The Centroid tab's bridge button to the room-direction walkthrough
+ * — switching tabs directly rather than just telling the person to do
+ * it themselves, since that hand-off (get your center here, then go
+ * check rooms there) was exactly the kind of disconnect that made the
+ * app feel like several unrelated tools rather than one flow. (The
+ * floor-plan-photo path used to live on a separate Design tab and
+ * needed its own bridge button to reach it; now that it's on this
+ * same tab, that button and hand-off are gone entirely.)
  */
-document.getElementById("goToPhotoDetectBtn").addEventListener("click", () => {
-  document.querySelector('header nav button[data-tab="design"]').click();
-  const uploadInput = document.getElementById("floorPlanUpload");
-  if (uploadInput) uploadInput.scrollIntoView({ behavior: "smooth", block: "center" });
-});
 document.getElementById("goToMatrixBtn").addEventListener("click", () => {
   document.querySelector('header nav button[data-tab="matrix"]').click();
 });
@@ -3186,26 +3741,42 @@ document.getElementById("calcBrahmasthanBtn").addEventListener("click", () => {
   resEl.style.display = "none";
 
   const shape = activeShapeName();
-  let result;
+  let result, polygonForChakra;
   try {
     if (shape === "rect") {
       const width = parseFloat(document.getElementById("rectWidth").value);
       const depth = parseFloat(document.getElementById("rectDepth").value);
       if (!(width > 0) || !(depth > 0)) throw new Error("Width and depth must be positive numbers.");
       result = { x: width/2, y: depth/2, area: width*depth, convex: true };
+      polygonForChakra = [[0,0],[width,0],[width,depth],[0,depth]];
     } else if (shape === "walls") {
       if (wallSegments.length < 3) throw new Error("Need at least 3 walls.");
       if (wallSegments.some(s => !(s.length > 0))) throw new Error("Every wall needs a positive length.");
       const wallVerts = verticesFromWalls(wallSegments, 0);
+      if (!isSimplePolygon(wallVerts)) {
+        throw new Error("These walls cross over themselves partway around (like a bowtie) instead of tracing a clean " +
+          "boundary — a wall length or turn angle is probably wrong, or two walls were entered in the wrong order. " +
+          "GEOS (the geometry engine behind QGIS's own tools) would reject this same shape as invalid for exactly " +
+          "this reason — fix the crossing before trusting any centroid computed from it.");
+      }
       const c = polygonCentroid(wallVerts);
       if (!c) throw new Error("These walls don't enclose any area — check the lengths and turn angles.");
       const gap = wallClosureGapMeters(wallSegments, 0);
       result = { x: c.x, y: c.y, area: c.area, convex: isConvex(wallVerts), closureGap: gap };
+      polygonForChakra = wallVerts;
     } else {
       if (vertices.length < 3) throw new Error("Need at least 3 corners.");
+      if (!isSimplePolygon(vertices)) {
+        throw new Error("These corners cross over themselves partway around (like a bowtie) instead of tracing a " +
+          "clean boundary — two corners are probably entered out of order. GEOS (the geometry engine behind QGIS's " +
+          "own tools) would reject this same shape as invalid for exactly this reason — reorder the corners so they " +
+          "walk around the boundary consistently (all clockwise, or all counterclockwise) before trusting any " +
+          "centroid computed from it.");
+      }
       const c = polygonCentroid(vertices);
       if (!c) throw new Error("These corners don't enclose any area — check for duplicate or collinear points.");
       result = { x: c.x, y: c.y, area: c.area, convex: isConvex(vertices) };
+      polygonForChakra = vertices.slice();
     }
   } catch (e) {
     errEl.textContent = e.message;
@@ -3213,6 +3784,7 @@ document.getElementById("calcBrahmasthanBtn").addEventListener("click", () => {
     return;
   }
 
+  lastBrahmaPolygon = polygonForChakra;
   showBrahmaResult(result);
 });
 
@@ -3306,6 +3878,14 @@ document.getElementById("autoFinishBtn").addEventListener("click", () => {
   }
 
   const projected = equirectangularProject(autoCorners);
+  if (!isSimplePolygon(projected)) {
+    errEl.textContent = "Walking the boundary crossed back over itself (like a bowtie) instead of tracing a clean " +
+      "loop — most likely two corners got captured out of order. GEOS (the geometry engine behind QGIS's own " +
+      "tools) would reject this same shape as invalid for exactly this reason — undo back to the crossing point " +
+      "and re-capture those corners in the correct walking order.";
+    errEl.style.display = "block";
+    return;
+  }
   const c = polygonCentroid(projected);
   if (!c) {
     errEl.textContent = "These corners don't enclose any area — try again, walking the boundary in order.";
@@ -3313,6 +3893,7 @@ document.getElementById("autoFinishBtn").addEventListener("click", () => {
     return;
   }
 
+  lastBrahmaPolygon = projected;
   const centroidLatLon = unprojectPoint(autoCorners[0].lat, autoCorners[0].lon, c.x, c.y);
   showBrahmaResult({
     x: c.x, y: c.y, area: c.area,
@@ -4711,14 +5292,188 @@ function detectFloorPlanFootprint(sourceCanvas, options){
   if (count === 0) return { count: 0, coveragePct: 1 };
 
   const invScale = 1/scale;
+
+  /**
+   * Traces the actual vector outline of the footprint mask computed
+   * above — the same two building blocks GDAL's own raster→vector
+   * polygonize algorithm uses (connected-component labeling, which
+   * the flood fill above already amounts to, then boundary contour
+   * tracing), rather than only ever reporting a pixel-average point
+   * with nothing to show for it. Moore-Neighbor tracing (the standard
+   * boundary-following algorithm — walk the mask's edge, keeping the
+   * boundary on one side, using 8-connectivity, until back at the
+   * start) walks every boundary pixel; Douglas-Peucker then collapses
+   * that dense pixel chain down to the handful of corners that
+   * actually matter, the same simplification step real GIS pipelines
+   * apply to raw-traced raster boundaries.
+   *
+   * This buys two concrete things beyond the pixel-mean centroid
+   * alone: an outline that can be drawn on screen so the person can
+   * SEE exactly what boundary the algorithm found (rather than trust
+   * a single dot blindly), and an independent, differently-computed
+   * centroid (shoelace formula on the traced polygon, vs. the raw
+   * pixel average above) whose agreement with the pixel-mean centroid
+   * is itself a real confidence signal — the "outline mostly closed
+   * and gave a sane, non-degenerate shape" check the coverage
+   * threshold alone can't fully provide.
+   */
+  const traced = traceBoundaryMooreNeighbor(outside, w, h, true /* traceFootprint */);
+  let outlinePolygon = null, shoelaceCentroid = null, pointOnSurface = null, centroidInsideOutline = null;
+  if (traced.length >= 3) {
+    const simplified = simplifyPolygonRDP(traced, 1.2);
+    if (simplified.length >= 3) {
+      outlinePolygon = simplified.map(p => [p[0]*invScale, p[1]*invScale]);
+      shoelaceCentroid = polygonCentroid(outlinePolygon);
+      if (shoelaceCentroid) {
+        const meanCentroid = [(sumX/count)*invScale, (sumY/count)*invScale];
+        centroidInsideOutline = pointInPolygon(meanCentroid, outlinePolygon);
+        if (!centroidInsideOutline) {
+          pointOnSurface = pointOnSurfaceFallback({ x: meanCentroid[0], y: meanCentroid[1] }, outlinePolygon);
+        }
+      }
+    }
+  }
+
   return {
     x: (sumX/count) * invScale,
     y: (sumY/count) * invScale,
     pixelArea: count * invScale * invScale,
     boundingBox: { x: minX*invScale, y: minY*invScale, w: (maxX-minX)*invScale, h: (maxY-minY)*invScale },
     coveragePct: coveragePct,
-    count: count
+    count: count,
+    outlinePolygon: outlinePolygon,
+    shoelaceCentroid: shoelaceCentroid,
+    centroidInsideOutline: centroidInsideOutline,
+    pointOnSurface: pointOnSurface
   };
+}
+
+/**
+ * Moore-Neighbor boundary tracing — walks the edge of a binary mask
+ * into an ordered sequence of boundary-pixel coordinates, the same
+ * contour-following step GDAL's polygonize uses after connected-
+ * component labeling. `mask` is the footprint's complement here
+ * (the `outside` array from detectFloorPlanFootprint above) because
+ * that's what's already computed; traceFootprint=true walks the
+ * boundary of the pixels NOT in that mask (i.e. the footprint itself)
+ * rather than the mask's own boundary — kept as a flag rather than a
+ * second array so the caller doesn't need to invert anything.
+ * Returns [] if there's no boundary to trace at all.
+ */
+function traceBoundaryMooreNeighbor(mask, w, h, traceFootprint){
+  function isFg(x, y){
+    if (x < 0 || x >= w || y < 0 || y >= h) return false;
+    const v = mask[y*w + x];
+    return traceFootprint ? v === 0 : v === 1;
+  }
+  let start = null;
+  for (let y = 0; y < h && !start; y++) {
+    for (let x = 0; x < w; x++) {
+      if (isFg(x, y)) { start = [x, y]; break; }
+    }
+  }
+  if (!start) return [];
+
+  // Clockwise 8-neighbor offsets starting from North.
+  const dirs = [[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]];
+  const boundary = [];
+  let current = start;
+  let backtrackDirIdx = 6; // West — always background/off-mask since `start` was found scanning left-to-right
+  const maxSteps = w * h * 4; // safety cap against a pathological mask, never legitimately reached
+  let steps = 0;
+  do {
+    boundary.push(current);
+    let foundIdx = -1;
+    for (let k = 1; k <= 8; k++) {
+      const idx = (backtrackDirIdx + k) % 8;
+      const nx = current[0] + dirs[idx][0], ny = current[1] + dirs[idx][1];
+      if (isFg(nx, ny)) { foundIdx = idx; break; }
+    }
+    if (foundIdx === -1) break; // an isolated single pixel with no foreground neighbor
+    current = [current[0] + dirs[foundIdx][0], current[1] + dirs[foundIdx][1]];
+    backtrackDirIdx = (foundIdx + 4) % 8;
+    steps++;
+  } while (!(current[0] === start[0] && current[1] === start[1]) && steps < maxSteps);
+  return boundary;
+}
+
+/**
+ * Douglas-Peucker polygon simplification — collapses a dense pixel-
+ * chain boundary (one point per traced pixel) down to its real
+ * corners, within `epsilon` pixels of perpendicular deviation. The
+ * same simplification step real raster-to-vector GIS pipelines apply;
+ * without it, every traced outline would carry hundreds of near-
+ * collinear points instead of the handful that actually describe the
+ * shape.
+ */
+function simplifyPolygonRDP(points, epsilon){
+  if (points.length < 3) return points;
+  function perpDist(p, a, b){
+    const dx = b[0]-a[0], dy = b[1]-a[1];
+    const len = Math.sqrt(dx*dx + dy*dy);
+    if (len === 0) return Math.hypot(p[0]-a[0], p[1]-a[1]);
+    return Math.abs(dy*p[0] - dx*p[1] + b[0]*a[1] - b[1]*a[0]) / len;
+  }
+  function rdp(pts){
+    if (pts.length < 3) return pts;
+    let maxD = 0, idx = 0;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const d = perpDist(pts[i], pts[0], pts[pts.length-1]);
+      if (d > maxD) { maxD = d; idx = i; }
+    }
+    if (maxD > epsilon) {
+      const left = rdp(pts.slice(0, idx+1));
+      const right = rdp(pts.slice(idx));
+      return left.slice(0, -1).concat(right);
+    }
+    return [pts[0], pts[pts.length-1]];
+  }
+  return rdp(points);
+}
+
+/** Standard ray-casting point-in-polygon test. */
+function pointInPolygon(pt, poly){
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+    const intersect = ((yi > pt[1]) !== (yj > pt[1])) &&
+      (pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * A simplified, from-scratch equivalent of GEOS/JTS's interiorPoint
+ * (used by PostGIS's ST_PointOnSurface): for a non-convex shape whose
+ * pure area centroid can legitimately fall outside the shape itself
+ * (e.g. in the notch of an L, U, or C outline — nobody can stand
+ * there), find a point that's actually guaranteed to be inside it.
+ * Method: take the horizontal scanline through the centroid's own y,
+ * collect every x where it crosses the polygon's edges, pair them
+ * into alternating inside/outside intervals, and return the midpoint
+ * of the WIDEST inside interval on that line — the same "bisect near
+ * the middle, pick the broadest interior span" idea GEOS's algorithm
+ * uses, simplified to the one scanline already at hand rather than
+ * searching for the single best one.
+ */
+function pointOnSurfaceFallback(centroid, poly){
+  const y = centroid.y;
+  const xs = [];
+  for (let i = 0; i < poly.length; i++) {
+    const [x1, y1] = poly[i], [x2, y2] = poly[(i+1) % poly.length];
+    if ((y1 <= y && y2 > y) || (y2 <= y && y1 > y)) {
+      const t = (y - y1) / (y2 - y1);
+      xs.push(x1 + t * (x2 - x1));
+    }
+  }
+  xs.sort((a, b) => a - b);
+  let best = null, bestWidth = -1;
+  for (let i = 0; i + 1 < xs.length; i += 2) {
+    const width = xs[i+1] - xs[i];
+    if (width > bestWidth) { bestWidth = width; best = (xs[i] + xs[i+1]) / 2; }
+  }
+  return best === null ? { x: centroid.x, y: centroid.y } : { x: best, y: y };
 }
 
 /**
@@ -4791,16 +5546,33 @@ function detectFloorPlanBrahmasthan(sourceCanvas, options){
   // through) and fall back rather than trust it.
   const outlineLooksReliable = outline.count > 0 && (1 - coveragePct) > 0.10 && (1 - coveragePct) < 0.80;
   if (outlineLooksReliable) {
-    return { x: outline.x, y: outline.y, method: "outline", coveragePct: coveragePct, boundingBox: outline.boundingBox };
+    // The true area centroid is reported as the primary point (this
+    // is what "the geometric center of the plot" means in the
+    // classical sense) but when it falls outside the traced outline
+    // itself — only possible for a non-convex shape, e.g. in the
+    // notch of an L/U/C — a guaranteed-inside alternative point is
+    // reported alongside it rather than silently swapped in, so nothing
+    // is hidden about why there are two numbers instead of one.
+    const usingPointOnSurface = outline.centroidInsideOutline === false && outline.pointOnSurface;
+    return {
+      x: outline.x, y: outline.y,
+      method: "outline",
+      coveragePct: coveragePct,
+      boundingBox: outline.boundingBox,
+      outlinePolygon: outline.outlinePolygon,
+      shoelaceCentroid: outline.shoelaceCentroid,
+      centroidInsideOutline: outline.centroidInsideOutline,
+      pointOnSurface: usingPointOnSurface ? outline.pointOnSurface : null
+    };
   }
   const bbox = detectInkBoundingBox(sourceCanvas, options);
   if (bbox) {
-    return { x: bbox.x, y: bbox.y, method: "bounding-box", coveragePct: coveragePct, boundingBox: bbox.boundingBox };
+    return { x: bbox.x, y: bbox.y, method: "bounding-box", coveragePct: coveragePct, boundingBox: bbox.boundingBox, outlinePolygon: null };
   }
   // Last resort: the plain image midpoint this app always used before —
   // only reached if the image is essentially blank at the sampled
   // resolution.
-  return { x: sourceCanvas.width/2, y: sourceCanvas.height/2, method: "image-midpoint", coveragePct: coveragePct, boundingBox: null };
+  return { x: sourceCanvas.width/2, y: sourceCanvas.height/2, method: "image-midpoint", coveragePct: coveragePct, boundingBox: null, outlinePolygon: null };
 }
 
 /**
@@ -5001,6 +5773,8 @@ function applyFloorPlanTransform(partial){
   delete ocrResultsByFloor[currentFloorIndex];
   delete entry.detectedCentroid;
   delete entry.detectionMethod;
+  delete entry.outlinePolygon;
+  delete entry.pointOnSurface;
   renderOcrResults();
   if (lastDesignCentroid || currentFloorIndex >= 0) drawPlan2d(rooms, lastDesignCentroid);
   runBrahmaDetectionOnCurrentFloor(document.getElementById("planDetectStatus"));
@@ -5060,9 +5834,33 @@ function runBrahmaDetectionOnCurrentFloor(statusEl){
   const detected = detectFloorPlanBrahmasthan(entry.effectiveCanvas);
   entry.detectedCentroid = { x: detected.x, y: detected.y };
   entry.detectionMethod = detected.method;
+  entry.outlinePolygon = detected.outlinePolygon || null;
+  entry.pointOnSurface = detected.pointOnSurface || null;
   if (detected.method === "outline") {
+    let crossCheckNote = "";
+    if (detected.shoelaceCentroid) {
+      // Two independently-computed centroids — one from the raw pixel
+      // mask, one from the simplified traced-vector outline via the
+      // exact shoelace formula — agreeing closely is itself evidence
+      // the traced outline is a faithful match to the actual drawing,
+      // not just a plausible-looking coverage percentage.
+      const dx = detected.x - detected.shoelaceCentroid.x, dy = detected.y - detected.shoelaceCentroid.y;
+      const agreementPx = Math.sqrt(dx*dx + dy*dy);
+      crossCheckNote = agreementPx < 3 ?
+        " Cross-checked against an independently traced outline — both methods agree to within " + agreementPx.toFixed(1) + "px." :
+        " Note: the traced-outline centroid landed " + agreementPx.toFixed(0) + "px away from the pixel-mask centroid — worth double-checking the marked point against the picture.";
+    }
+    let pointOnSurfaceNote = "";
+    if (detected.pointOnSurface) {
+      pointOnSurfaceNote = " This plot is non-convex, so its true geometric center falls just outside the built " +
+        "footprint (normal for an L/U/C-shaped outline, not a detection error) — the point marked below has been " +
+        "moved to the nearest guaranteed-inside spot instead, since nobody can stand in a notch that isn't there.";
+      entry.detectedCentroid = { x: detected.pointOnSurface.x, y: detected.pointOnSurface.y };
+      entry.detectionMethod = "outline-adjusted";
+    }
     statusEl.textContent = "Found the building's own outline and centered on it (covering about " +
-      Math.round((1 - detected.coveragePct) * 100) + "% of the image) — check the marked point against the picture below.";
+      Math.round((1 - detected.coveragePct) * 100) + "% of the image)." + crossCheckNote + pointOnSurfaceNote +
+      " Check the marked point and the traced outline against the picture below.";
   } else if (detected.method === "bounding-box") {
     statusEl.textContent = "Couldn't close a full outline (open doorways in the drawing usually cause this) — " +
       "centered on the drawing's own ink instead, which still excludes any blank margin/title block. " +
@@ -5073,6 +5871,7 @@ function runBrahmaDetectionOnCurrentFloor(statusEl){
   }
   rederiveOcrBearings(entry, currentFloorIndex);
   renderOcrResults();
+  renderCopyFloorCentroidOptions();
   drawPlan2d(rooms, lastDesignCentroid);
   return true;
 }
@@ -5198,10 +5997,21 @@ function renderFloorPlanTabs(){
  * floor to borrow from, and the copy is explicitly tagged as "copied"
  * (not "detected") wherever it's shown, so it's never confused with an
  * independent detection for a floor whose shape actually differs.
+ *
+ * Also runs a shape-similarity check (see outlineShapeSignature/
+ * shapeSimilarityScore above) between this floor's own traced outline
+ * and every other floor's: when one scores high, it's surfaced as an
+ * explicit suggestion ("this looks like the same footprint as Floor
+ * X") rather than left for the person to notice on their own — but
+ * always as a one-tap SUGGESTION to confirm, never an automatic copy,
+ * since the signature is a cheap aspect/compactness fingerprint, not
+ * a rigorous shape-registration algorithm, and a false match here
+ * would silently point every direction reading at the wrong center.
  */
 function renderCopyFloorCentroidOptions(){
   const row = document.getElementById("copyFloorCentroidRow");
   const sel = document.getElementById("copyFloorCentroidSelect");
+  const suggestionEl = document.getElementById("floorSimilaritySuggestion");
   if (!row || !sel) return;
   const others = floorPlans.map((fp, i) => ({ fp, i })).filter(({ i }) => i !== currentFloorIndex && floorPlans[i].detectedCentroid);
   if (currentFloorIndex < 0 || others.length === 0) {
@@ -5210,6 +6020,37 @@ function renderCopyFloorCentroidOptions(){
   }
   row.style.display = "block";
   sel.innerHTML = others.map(({ fp, i }) => '<option value="' + i + '">' + fp.label + '</option>').join("");
+
+  suggestionEl.style.display = "none";
+  const currentEntry = floorPlans[currentFloorIndex];
+  const currentSig = outlineShapeSignature(currentEntry.outlinePolygon);
+  if (!currentSig) return; // this floor has no traced outline of its own yet (bounding-box fallback, manual point, or not yet analyzed) — nothing to compare
+  let best = null;
+  others.forEach(({ fp, i }) => {
+    const sig = outlineShapeSignature(fp.outlinePolygon);
+    if (!sig) return;
+    const score = shapeSimilarityScore(currentSig, sig);
+    if (!best || score > best.score) best = { score, i, label: fp.label };
+  });
+  const SIMILARITY_SUGGEST_THRESHOLD = 0.9;
+  if (best && best.score >= SIMILARITY_SUGGEST_THRESHOLD && floorPlans[currentFloorIndex].detectionMethod !== "copied") {
+    suggestionEl.style.display = "block";
+    suggestionEl.innerHTML =
+      '<div class="card tertiary" style="margin:0; padding:10px;">' +
+      "This floor's traced outline shape (aspect ratio and compactness) looks like a close match to <strong>" +
+      best.label + "</strong> (" + Math.round(best.score*100) + "% similar) — likely the same real footprint. " +
+      '<button class="ghost" id="acceptFloorSimilarityBtn" style="margin-top:6px;">Yes, copy ' + best.label + "'s point</button>" +
+      '<button class="ghost" id="dismissFloorSimilarityBtn" style="margin-top:6px;">No, this floor is actually different</button>' +
+      '</div>';
+    document.getElementById("acceptFloorSimilarityBtn").addEventListener("click", () => {
+      sel.value = best.i;
+      document.getElementById("copyFloorCentroidBtn").click();
+      suggestionEl.style.display = "none";
+    });
+    document.getElementById("dismissFloorSimilarityBtn").addEventListener("click", () => {
+      suggestionEl.style.display = "none";
+    });
+  }
 }
 
 document.getElementById("copyFloorCentroidBtn").addEventListener("click", () => {
@@ -5228,6 +6069,14 @@ document.getElementById("copyFloorCentroidBtn").addEventListener("click", () => 
   const sy = entry.effectiveCanvas.height / fromEntry.effectiveCanvas.height;
   entry.detectedCentroid = { x: fromEntry.detectedCentroid.x * sx, y: fromEntry.detectedCentroid.y * sy };
   entry.detectionMethod = "copied";
+  // The traced outline is tied to the source floor's own drawing, not
+  // this one — carrying it over would show a green boundary that
+  // doesn't actually match this floor's photo. Scale it across too
+  // (same reasoning as the point above: proportionally valid when the
+  // footprint really is the same, which is the only case this button
+  // is meant for) rather than just dropping it silently.
+  entry.outlinePolygon = fromEntry.outlinePolygon ?
+    fromEntry.outlinePolygon.map(p => [p[0]*sx, p[1]*sy]) : null;
   rederiveOcrBearings(entry, currentFloorIndex);
   document.getElementById("planDetectStatus").textContent =
     "Copied the Brahmasthan point from " + fromEntry.label + " — every direction on this floor has been re-measured against it.";
@@ -5830,6 +6679,52 @@ function drawZoneOverlay(ctx, cx, cy, radius, elementKey, sectorCount, offsetDeg
     (offsetDeg ? " · compass-calibrated" : ""), cx, 14);
 }
 
+/**
+ * The Shakti Chakra overlay: the 32 Vastu Purusha pada names (same
+ * data as the Guide tab's square 81-pada mandala and the Dial tab's
+ * 32-point compass) drawn as a circular wheel and rotated by
+ * `offsetDeg` — the building's own real compass bearing, from either
+ * a BAG-derived minimum-area-rectangle angle or a phone-compass
+ * calibration — so the wheel's own N literally points at true north
+ * exactly the way the real building's own walls do, not just however
+ * the canvas happened to be drawn.
+ */
+function drawShaktiChakra(ctx, cx, cy, radius, offsetDeg){
+  offsetDeg = offsetDeg || 0;
+  const sectorWidth = 360 / 32;
+  const toCanvasAngleRad = (compassDeg) => (compassDeg - offsetDeg - 90) * Math.PI / 180;
+  for (let i = 0; i < 32; i++) {
+    const center = i * sectorWidth;
+    const startAngle = toCanvasAngleRad(center - sectorWidth/2);
+    const endAngle = startAngle + sectorWidth * Math.PI/180;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, radius, startAngle, endAngle);
+    ctx.closePath();
+    ctx.fillStyle = i % 2 === 0 ? "rgba(160,140,220,0.16)" : "rgba(160,140,220,0.08)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(26,26,46,0.25)";
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+  }
+  // Cardinal + intercardinal labels only (all 32 pada names would be
+  // illegible at this scale) — the same practical call the zone
+  // overlay above already makes at high sector counts.
+  ctx.fillStyle = "#1a1a2e";
+  ctx.font = "bold 11px sans-serif";
+  ctx.textAlign = "center";
+  [["N",0], ["NE",45], ["E",90], ["SE",135], ["S",180], ["SW",225], ["W",270], ["NW",315]].forEach(([label, deg]) => {
+    const rad = toCanvasAngleRad(deg);
+    const labelR = radius + 14;
+    ctx.fillText(label, cx + labelR*Math.cos(rad), cy + labelR*Math.sin(rad));
+  });
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, 2*Math.PI);
+  ctx.fillStyle = "#e64545";
+  ctx.fill();
+}
+
+
 function drawPlan2d(roomsList, centroid){
   const canvas = document.getElementById("planCanvas");
   const ctx = canvas.getContext("2d");
@@ -5862,12 +6757,34 @@ function drawPlan2d(roomsList, centroid){
     drawZoneOverlay(ctx, overlayCx, overlayCy, Math.min(w, h) / 2 - 10, overlayType, overlaySectorCount, floorPlans[currentFloorIndex].northOffsetDeg || 0);
   }
 
+  // The traced building outline itself, when auto-detection found one
+  // (see traceBoundaryMooreNeighbor) — drawn so the person can visually
+  // confirm the algorithm actually followed their real walls, rather
+  // than trust a single unexplained dot. Mapped the same way the
+  // Brahmasthan marker is, from image-pixel space into this canvas's
+  // own pixel space.
+  if (currentImg && floorPlans[currentFloorIndex].outlinePolygon) {
+    const poly = floorPlans[currentFloorIndex].outlinePolygon;
+    const sx = w / currentImg.width, sy = h / currentImg.height;
+    ctx.beginPath();
+    poly.forEach((p, i) => {
+      const px = p[0]*sx, py = p[1]*sy;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.closePath();
+    ctx.strokeStyle = "#2f9e44";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
   if (currentImg) {
     drawOcrMarkers(ctx, ocrResultsByFloor[currentFloorIndex], currentImg.width, currentImg.height, w, h);
     // The Brahmasthan point itself — always shown when an image is
     // loaded, whether it came from auto-detection, the bounding-box
     // fallback, or a manual tap, so it's never invisible/implicit.
-    const methodLabel = { outline: "auto-detected", "bounding-box": "auto (bounding-box)", manual: "set manually", copied: "copied from another floor", "image-midpoint": "image midpoint (fallback)" }
+    const methodLabel = { outline: "auto-detected", "outline-adjusted": "auto-detected, moved to stay inside the plot", "bounding-box": "auto (bounding-box)", manual: "set manually", copied: "copied from another floor", "image-midpoint": "image midpoint (fallback)" }
       [floorPlans[currentFloorIndex].detectionMethod] || "image midpoint (default)";
     ctx.beginPath();
     ctx.moveTo(overlayCx - 10, overlayCy); ctx.lineTo(overlayCx + 10, overlayCy);
@@ -6851,7 +7768,26 @@ window.__testHooks = {
   GUIDED_WALKTHROUGH_ORDER: (typeof GUIDED_WALKTHROUGH_ORDER !== "undefined") ? GUIDED_WALKTHROUGH_ORDER : null,
   isCompassScreenActive: (typeof isCompassScreenActive !== "undefined") ? isCompassScreenActive : null,
   getFloorPlans: () => (typeof floorPlans !== "undefined") ? floorPlans : null,
-  getCurrentFloorIndex: () => (typeof currentFloorIndex !== "undefined") ? currentFloorIndex : null
+  getCurrentFloorIndex: () => (typeof currentFloorIndex !== "undefined") ? currentFloorIndex : null,
+  traceBoundaryMooreNeighbor: (typeof traceBoundaryMooreNeighbor !== "undefined") ? traceBoundaryMooreNeighbor : null,
+  simplifyPolygonRDP: (typeof simplifyPolygonRDP !== "undefined") ? simplifyPolygonRDP : null,
+  pointInPolygon: (typeof pointInPolygon !== "undefined") ? pointInPolygon : null,
+  pointOnSurfaceFallback: (typeof pointOnSurfaceFallback !== "undefined") ? pointOnSurfaceFallback : null,
+  convexHull: (typeof convexHull !== "undefined") ? convexHull : null,
+  minimumAreaRectangle: (typeof minimumAreaRectangle !== "undefined") ? minimumAreaRectangle : null,
+  dominantBuildingBearing: (typeof dominantBuildingBearing !== "undefined") ? dominantBuildingBearing : null,
+  equirectangularProject: (typeof equirectangularProject !== "undefined") ? equirectangularProject : null,
+  unprojectPoint: (typeof unprojectPoint !== "undefined") ? unprojectPoint : null,
+  fetchBagFootprint: (typeof fetchBagFootprint !== "undefined") ? fetchBagFootprint : null,
+  drawShaktiChakra: (typeof drawShaktiChakra !== "undefined") ? drawShaktiChakra : null,
+  getLastBagResult: () => (typeof lastBagResult !== "undefined") ? lastBagResult : null,
+  isSimplePolygon: (typeof isSimplePolygon !== "undefined") ? isSimplePolygon : null,
+  segmentsIntersect: (typeof segmentsIntersect !== "undefined") ? segmentsIntersect : null,
+  drawPolygonWithChakra: (typeof drawPolygonWithChakra !== "undefined") ? drawPolygonWithChakra : null,
+  getLastBrahmaPolygon: () => (typeof lastBrahmaPolygon !== "undefined") ? lastBrahmaPolygon : null,
+  getLastBrahmaResult: () => (typeof lastBrahmaResult !== "undefined") ? lastBrahmaResult : null,
+  outlineShapeSignature: (typeof outlineShapeSignature !== "undefined") ? outlineShapeSignature : null,
+  shapeSimilarityScore: (typeof shapeSimilarityScore !== "undefined") ? shapeSimilarityScore : null
 };
 </script>
 
